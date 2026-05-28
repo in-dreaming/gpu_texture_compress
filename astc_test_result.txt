@@ -1,0 +1,18 @@
+=== GPU Device Info ===
+  Driver:   vulkan
+  Compute:  supported
+=======================
+[main] Loading config: experiments/configs/test_astc_blockmode.json
+[ExperimentRunner] Config 'test_astc_blockmode_fix': 3 formats, 1 textures, quality=1
+
+=== Starting Experiment: test_astc_blockmode_fix ===
+
+[Pipeline] Compiling shader for ASTC_4x4: shaders/dispatch/astc_4x4_cs.hlsl
+[Pipeline] ERROR: Failed to compile ASTC_4x4: Shader file not found: shaders/dispatch/astc_4x4_cs.hlsl
+
+=== Experiment: test_astc_blockmode_fix ===
+total_time_seconds: 0.0
+status: FAILED
+error: Failed to compile shader for ASTC_4x4
+[ResultsLogger] Logged to experiments/results/test_astc_blockmode_fix.tsv
+[Results] Logged to: experiments/results/test_astc_blockmode_fix.tsv

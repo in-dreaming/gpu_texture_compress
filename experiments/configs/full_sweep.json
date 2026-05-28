@@ -6,9 +6,9 @@
                 "ASTC_10x5", "ASTC_10x6", "ASTC_10x8", "ASTC_10x10",
                 "ASTC_12x10", "ASTC_12x12"],
     "textures": [
-        "data/src_texture/Images/Khronos/LDR-RGB/ldr-rgb-diffuse.png",
-        "data/src_texture/Images/Small/LDR-RGB/ldr-rgb-00.png",
-        "data/src_texture/Images/Small/LDR-RGB/ldr-rgb-01.png"
+        "src_texture/Images/Khronos/LDR-RGB/ldr-rgb-diffuse.png",
+        "src_texture/Images/Small/LDR-RGB/ldr-rgb-00.png",
+        "src_texture/Images/Small/LDR-RGB/ldr-rgb-01.png"
     ],
     "quality_level": 1,
     "warmup_runs": 0,

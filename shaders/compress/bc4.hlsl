@@ -125,10 +125,8 @@ uint2 compress_bc4(float values[16]) {
         best_error = error_6v;
         [unroll] for (int i = 0; i < 16; i++) best_indices[i] = indices_6v[i];
         use_8value = false;
-        uint new_ep0 = min(ep0, ep1);
-        uint new_ep1 = max(ep0, ep1);
-        ep0 = new_ep0;
-        ep1 = new_ep1;
+        ep0 = min(ep0, ep1);
+        ep1 = max(ep0, ep1);
     }
 
     // Local search around best endpoints (±3 range)

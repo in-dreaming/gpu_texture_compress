@@ -1,0 +1,12 @@
+{
+    "name": "quick_bc6h_hdr",
+    "formats": ["BC6H"],
+    "textures": [
+        "data/src_texture/Images/HDRIHaven/HDR-RGB/hdr-rgb-arboretum.hdr",
+        "data/src_texture/Images/HDRIHaven/HDR-RGB/hdr-rgb-bellparkpier.hdr",
+        "data/src_texture/Images/HDRIHaven/HDR-RGB/hdr-rgb-canarywharf.hdr"
+    ],
+    "quality_level": 1,
+    "warmup_runs": 0,
+    "measurement_runs": 1
+}
