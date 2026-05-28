@@ -72,7 +72,7 @@ void evaluate_6value(in float values[16], in uint ep0, in uint ep1,
 
 // Compress a 4x4 block of single-channel values into BC4
 uint2 compress_bc4(float values[16]) {
-    // Find min and max
+    // Find min, max, and range
     float minVal = values[0];
     float maxVal = values[0];
     [unroll] for (int i = 1; i < 16; i++) {
@@ -80,84 +80,157 @@ uint2 compress_bc4(float values[16]) {
         maxVal = max(maxVal, values[i]);
     }
 
-    // Initial endpoints
-    uint ep0 = (uint)(saturate(maxVal) * 255.0 + 0.5);
-    uint ep1 = (uint)(saturate(minVal) * 255.0 + 0.5);
+    float range = maxVal - minVal;
 
-    if (ep0 == ep1) {
-        if (ep0 < 255) ep0++;
-        else ep1--;
+    // Constant block special case
+    if (range < 0.001) {
+        uint gray = (uint)(saturate((minVal + maxVal) * 0.5) * 255.0 + 0.5);
+        uint ep0 = min((uint)255, gray + 1);
+        uint ep1 = gray;
+
+        uint indexLow = 0, indexHigh = 0;
+        [unroll] for (int k = 0; k < 16; k++) {
+            uint bitPos = (uint)k * 3;
+            // All pixels use first palette entry (index 0)
+        }
+
+        uint packed_x = ep0 | (ep1 << 8) | ((indexLow & 0xFFFF) << 16);
+        uint packed_y = (indexLow >> 16) | (indexHigh << 16);
+        return uint2(packed_x, packed_y);
     }
 
-    // Try both 8-value and 6-value modes to see which is better
+    // Try multiple initial endpoint candidates
     uint best_indices[16];
     float best_error = 1e10;
-    bool use_8value = true;
+    uint best_ep0 = 128, best_ep1 = 128;
 
-    // Try 8-value mode
-    uint indices_8v[16];
-    float error_8v;
-    evaluate_8value(values, ep0, ep1, indices_8v, error_8v);
-
-    // Also try swapped for 8-value
-    uint indices_8v_swap[16];
-    float error_8v_swap;
-    if (ep1 < ep0) {
-        evaluate_8value(values, ep1, ep0, indices_8v_swap, error_8v_swap);
-        if (error_8v_swap < error_8v) {
-            error_8v = error_8v_swap;
-            [unroll] for (int i = 0; i < 16; i++) indices_8v[i] = indices_8v_swap[i];
-            uint tmp = ep0;
-            ep0 = ep1;
-            ep1 = tmp;
-        }
+    // Macro: Try both modes for a given endpoint pair
+    #define TRY_ENDPOINTS(ep0, ep1) \
+    { \
+        uint try_indices_8v[16], try_indices_6v[16]; \
+        float try_error_8v, try_error_6v; \
+        if (ep0 > ep1) { \
+            evaluate_8value(values, ep0, ep1, try_indices_8v, try_error_8v); \
+            if (try_error_8v < best_error) { \
+                best_error = try_error_8v; \
+                [unroll] for (int i = 0; i < 16; i++) best_indices[i] = try_indices_8v[i]; \
+                best_ep0 = ep0; \
+                best_ep1 = ep1; \
+            } \
+        } \
+        if (ep0 <= ep1) { \
+            evaluate_6value(values, ep0, ep1, try_indices_6v, try_error_6v); \
+            if (try_error_6v < best_error) { \
+                best_error = try_error_6v; \
+                [unroll] for (int i = 0; i < 16; i++) best_indices[i] = try_indices_6v[i]; \
+                best_ep0 = ep0; \
+                best_ep1 = ep1; \
+            } \
+        } \
     }
 
-    best_error = error_8v;
-    [unroll] for (int i = 0; i < 16; i++) best_indices[i] = indices_8v[i];
-    use_8value = true;
-
-    // Try 6-value mode
-    uint indices_6v[16];
-    float error_6v;
-    evaluate_6value(values, min(ep0, ep1), max(ep0, ep1), indices_6v, error_6v);
-    if (error_6v < best_error) {
-        best_error = error_6v;
-        [unroll] for (int i = 0; i < 16; i++) best_indices[i] = indices_6v[i];
-        use_8value = false;
-        uint new_ep0 = min(ep0, ep1);
-        uint new_ep1 = max(ep0, ep1);
-        ep0 = new_ep0;
-        ep1 = new_ep1;
+    // Candidate 1: min/max
+    {
+        uint try_ep0 = (uint)(saturate(maxVal) * 255.0 + 0.5);
+        uint try_ep1 = (uint)(saturate(minVal) * 255.0 + 0.5);
+        TRY_ENDPOINTS(try_ep0, try_ep1);
+        TRY_ENDPOINTS(try_ep1, try_ep0);  // Also try flipped
     }
 
-    // Local search around best endpoints (±3 range)
-    [unroll] for (int d0 = -3; d0 <= 3; d0++) {
-        [unroll] for (int d1 = -3; d1 <= 3; d1++) {
-            uint try_ep0 = max(0, min(255, (int)ep0 + d0));
-            uint try_ep1 = max(0, min(255, (int)ep1 + d1));
+    // Candidate 2: median-based split (25%-75% quartiles)
+    {
+        uint med_ep0 = (uint)(saturate(minVal + range * 0.75) * 255.0 + 0.5);
+        uint med_ep1 = (uint)(saturate(minVal + range * 0.25) * 255.0 + 0.5);
+        TRY_ENDPOINTS(med_ep0, med_ep1);
+        TRY_ENDPOINTS(med_ep1, med_ep0);  // Also try flipped
+    }
+
+    // Candidate 3: tertiles (33%-67%)
+    {
+        uint ter_ep0 = (uint)(saturate(minVal + range * 0.67) * 255.0 + 0.5);
+        uint ter_ep1 = (uint)(saturate(minVal + range * 0.33) * 255.0 + 0.5);
+        TRY_ENDPOINTS(ter_ep0, ter_ep1);
+        TRY_ENDPOINTS(ter_ep1, ter_ep0);  // Also try flipped
+    }
+
+    // Candidate 4: deciles (10%-90%)
+    {
+        uint dec_ep0 = (uint)(saturate(minVal + range * 0.90) * 255.0 + 0.5);
+        uint dec_ep1 = (uint)(saturate(minVal + range * 0.10) * 255.0 + 0.5);
+        TRY_ENDPOINTS(dec_ep0, dec_ep1);
+        TRY_ENDPOINTS(dec_ep1, dec_ep0);  // Also try flipped
+    }
+
+    // Coarse local search (±16 step-2 around best)
+    [unroll] for (int d0 = -16; d0 <= 16; d0 += 2) {
+        [unroll] for (int d1 = -16; d1 <= 16; d1 += 2) {
+            uint try_ep0 = max(0, min(255, (int)best_ep0 + d0));
+            uint try_ep1 = max(0, min(255, (int)best_ep1 + d1));
 
             if (try_ep0 == try_ep1) continue;
 
             uint try_indices[16];
             float try_error;
 
-            if (use_8value && try_ep0 > try_ep1) {
+            if (try_ep0 > try_ep1) {
                 evaluate_8value(values, try_ep0, try_ep1, try_indices, try_error);
-            } else if (!use_8value && try_ep0 <= try_ep1) {
-                evaluate_6value(values, try_ep0, try_ep1, try_indices, try_error);
-            } else {
-                continue;
+                if (try_error < best_error) {
+                    best_error = try_error;
+                    [unroll] for (int i = 0; i < 16; i++) best_indices[i] = try_indices[i];
+                    best_ep0 = try_ep0;
+                    best_ep1 = try_ep1;
+                }
             }
 
-            if (try_error < best_error) {
-                best_error = try_error;
-                [unroll] for (int i = 0; i < 16; i++) best_indices[i] = try_indices[i];
-                ep0 = try_ep0;
-                ep1 = try_ep1;
+            if (try_ep0 <= try_ep1) {
+                evaluate_6value(values, try_ep0, try_ep1, try_indices, try_error);
+                if (try_error < best_error) {
+                    best_error = try_error;
+                    [unroll] for (int i = 0; i < 16; i++) best_indices[i] = try_indices[i];
+                    best_ep0 = try_ep0;
+                    best_ep1 = try_ep1;
+                }
             }
         }
     }
+
+    // Fine-grain local search (±2 step-1)
+    [unroll] for (int d0 = -2; d0 <= 2; d0++) {
+        [unroll] for (int d1 = -2; d1 <= 2; d1++) {
+            uint try_ep0 = max(0, min(255, (int)best_ep0 + d0));
+            uint try_ep1 = max(0, min(255, (int)best_ep1 + d1));
+
+            if (try_ep0 == try_ep1) continue;
+
+            uint try_indices[16];
+            float try_error;
+
+            if (try_ep0 > try_ep1) {
+                evaluate_8value(values, try_ep0, try_ep1, try_indices, try_error);
+                if (try_error < best_error) {
+                    best_error = try_error;
+                    [unroll] for (int i = 0; i < 16; i++) best_indices[i] = try_indices[i];
+                    best_ep0 = try_ep0;
+                    best_ep1 = try_ep1;
+                }
+            }
+
+            if (try_ep0 <= try_ep1) {
+                evaluate_6value(values, try_ep0, try_ep1, try_indices, try_error);
+                if (try_error < best_error) {
+                    best_error = try_error;
+                    [unroll] for (int i = 0; i < 16; i++) best_indices[i] = try_indices[i];
+                    best_ep0 = try_ep0;
+                    best_ep1 = try_ep1;
+                }
+            }
+        }
+    }
+
+    #undef TRY_ENDPOINTS
+
+    uint ep0 = best_ep0;
+    uint ep1 = best_ep1;
 
     // Pack into 64 bits
     uint indexLow = 0;
