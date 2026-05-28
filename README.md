@@ -68,19 +68,111 @@ build\src\Release\gtc_runner.exe --config experiments/configs/full_sweep.json \
 
 ## Autoresearch 模式
 
-基于 [Karpathy's autoresearch](https://github.com/karpathy/autoresearch) 模式:
+基于 [Karpathy's autoresearch](https://github.com/karpathy/autoresearch) 模式，AI Agent 自主循环优化压缩 shader。
 
-1. AI Agent 读取 `experiments/programs/<format>.md`
-2. 修改 `sdk/shaders/compress/<format>.hlsl`
-3. 自动: 编译 → 运行压缩 → 评估质量 → 保留/丢弃
-4. 循环迭代，持续优化
+### 快速开始实验
+
+**Step 1: 选择目标格式**
 
 ```bash
-# 启动 autoresearch (示例)
-# Agent 读取 experiments/programs/bc7.md 获取策略指导
-# 修改 sdk/shaders/compress/bc7.hlsl
-# 跑: gtc_runner.exe --config experiments/configs/quick_bc7.json ...
-# 看: avg_psnr 是否提升 → keep/discard
+# 查看可用的研究计划
+ls experiments/programs/
+# → bc1.md  bc3.md  bc4.md  bc5.md  bc6h.md  bc7.md  astc.md
+```
+
+**Step 2: 读取研究计划**
+
+研究计划包含：目标函数签名、当前baseline描述、优化策略路线图、官方源码参考路径。
+
+```bash
+# 以 BC7 为例
+cat experiments/programs/bc7.md
+```
+
+**Step 3: 创建实验分支**
+
+```bash
+git checkout -b autoresearch/bc7
+```
+
+**Step 4: 运行实验循环**
+
+```bash
+# 修改 shader
+code sdk/shaders/compress/bc7.hlsl
+
+# 提交
+git add sdk/shaders/compress/bc7.hlsl && git commit -m "BC7: add mode 5 support"
+
+# 构建 (增量编译很快)
+cmake --build build --config Release --target gtc_runner
+
+# 运行评估
+build\src\Release\gtc_runner.exe \
+    --config experiments/configs/quick_bc7.json \
+    --shader-dir sdk/shaders --data-dir .
+
+# 查看结果
+# → format: BC7  avg_psnr: 42.5  avg_ssim: 0.995  avg_time_ms: 1.2
+
+# 如果 PSNR 提升 → 保留提交，继续下一个实验
+# 如果 PSNR 下降 → git reset --hard HEAD~1，尝试其他方向
+```
+
+**Step 5: 查看实验历史**
+
+```bash
+cat experiments/results/quick_bc7.tsv
+# commit  format  avg_psnr  avg_ssim  avg_flip  time_ms  status  description
+# abc1234 BC7     39.96     0.992     0.012     0.35     keep    baseline mode 6
+# def5678 BC7     42.50     0.995     0.008     1.20     keep    add mode 5
+```
+
+### Agent 自动化提示词 (Claude Code)
+
+在项目根目录启动 Claude Code，输入：
+
+```
+读取 experiments/programs/bc7.md，开始 autoresearch 实验循环。
+```
+
+Agent 会自动：
+1. 读取研究计划获取策略指导
+2. 修改 `sdk/shaders/compress/bc7.hlsl`
+3. 编译、运行、评估
+4. 根据结果 keep/discard
+5. 无限循环直到手动中断
+
+### 可用实验配置
+
+| 配置文件 | 用途 |
+|----------|------|
+| `configs/quick_bc1.json` | BC1 快速测试 (3张纹理) |
+| `configs/quick_bc7.json` | BC7 快速测试 |
+| `configs/quick_astc_4x4.json` | ASTC 4x4 快速测试 |
+| `configs/quick_astc_6x6.json` | ASTC 6x6 快速测试 |
+| `configs/bcn_test.json` | 全部BCn (1张纹理) |
+| `configs/astc_sweep.json` | 全部ASTC (2张纹理) |
+| `configs/full_sweep.json` | 全部20格式 (3张纹理) |
+
+### SDK 文件结构 (Agent 可修改的范围)
+
+```
+sdk/shaders/compress/    ← Agent 优化这些文件
+├── bc1.hlsl             纯函数: uint2 compress_bc1(float3 pixels[16])
+├── bc3.hlsl             纯函数: uint4 compress_bc3(float4 pixels[16])
+├── bc4.hlsl             纯函数: uint2 compress_bc4(float values[16])
+├── bc5.hlsl             纯函数: uint4 compress_bc5(float2 pixels[16])
+├── bc6h.hlsl            纯函数: uint4 compress_bc6h(float3 pixels[16])
+├── bc7.hlsl             纯函数: uint4 compress_bc7(float4 pixels[16])
+├── astc_4x4.hlsl        纯函数: uint4 compress_astc_4x4(float4 pixels[16])
+├── astc_6x6.hlsl        纯函数: uint4 compress_astc_6x6(float4 pixels[36])
+├── astc_8x8.hlsl        纯函数: uint4 compress_astc_8x8(float4 pixels[64])
+├── ...                  (全14种ASTC block size)
+├── astc_encode_core.hlsl  ASTC共享编码核心 (来自参考实现)
+├── astc_tables.hlsl       ASTC量化/ISE表
+├── astc_ise.hlsl          ASTC Integer Sequence Encoding
+└── astc_common.hlsl       ASTC通用工具
 ```
 
 ## 评估指标
