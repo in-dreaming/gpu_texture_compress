@@ -66,6 +66,16 @@ float3 BC6H_ComputePCAAxis(float3 pixels[16], float3 mean) {
     return axis;
 }
 
+// BC6H palette weights (shared with BC7 Mode 6)
+static const uint aWeight4[16] = {0, 4, 9, 13, 17, 21, 26, 30, 34, 38, 43, 47, 51, 55, 60, 64};
+
+// Helper: Unquantize a 10-bit BC6H endpoint back to F16 integer space
+uint BC6H_UnquantizeF16(uint q) {
+    if (q == 0) return 0;
+    if (q >= 1023) return 0xFFFF;
+    return ((q << 16) + 0x8000) >> 10;  // (q << 6) + 32 in fractional form
+}
+
 // Compress a 4x4 block of HDR RGB pixels into BC6H (Mode 11)
 uint4 compress_bc6h(float3 pixels[16]) {
     // Compute mean
@@ -93,35 +103,56 @@ uint4 compress_bc6h(float3 pixels[16]) {
         maxProj = max(maxProj, proj);
     }
 
-    // Compute endpoints
+    // Compute endpoints in float space
     float3 endpoint0 = mean + axis * maxProj;
     float3 endpoint1 = mean + axis * minProj;
 
-    // Directly quantize endpoints without intermediate normalization
-    // BC6H Mode 11 uses 10-bit values, which can represent [0, 1023]
-    // For HDR values, we clamp each component independently
+    // Quantize endpoints to 10-bit BC6H space via F16 bit patterns
+    // BC6H stores F16 bit patterns as 10-bit quantized values
+    // Formula: q = f32tof16(floatValue) / 31
+    // This maps the F16 range [0, 0x7BFF=31743] to [0, 1023]
     uint3 ep0 = uint3(
-        min((uint)(saturate(endpoint0.x) * 1023.0 + 0.5), 1023u),
-        min((uint)(saturate(endpoint0.y) * 1023.0 + 0.5), 1023u),
-        min((uint)(saturate(endpoint0.z) * 1023.0 + 0.5), 1023u)
+        min((uint)(f32tof16(endpoint0.x)) / 31u, 1023u),
+        min((uint)(f32tof16(endpoint0.y)) / 31u, 1023u),
+        min((uint)(f32tof16(endpoint0.z)) / 31u, 1023u)
     );
     uint3 ep1 = uint3(
-        min((uint)(saturate(endpoint1.x) * 1023.0 + 0.5), 1023u),
-        min((uint)(saturate(endpoint1.y) * 1023.0 + 0.5), 1023u),
-        min((uint)(saturate(endpoint1.z) * 1023.0 + 0.5), 1023u)
+        min((uint)(f32tof16(endpoint1.x)) / 31u, 1023u),
+        min((uint)(f32tof16(endpoint1.y)) / 31u, 1023u),
+        min((uint)(f32tof16(endpoint1.z)) / 31u, 1023u)
     );
 
-    // Reconstruct float endpoints for index assignment
-    // BC6H stores 10-bit fixed values as-is, then the decompressor scales them by (max / 1023)
-    // where max is the maximum endpoint value
-    float3 fep0 = float3(float(ep0.x) / 1023.0, float(ep0.y) / 1023.0, float(ep0.z) / 1023.0);
-    float3 fep1 = float3(float(ep1.x) / 1023.0, float(ep1.y) / 1023.0, float(ep1.z) / 1023.0);
+    // Unquantize endpoints back to F16 bits for palette generation
+    uint3 f16_ep0 = uint3(
+        BC6H_UnquantizeF16(ep0.x),
+        BC6H_UnquantizeF16(ep0.y),
+        BC6H_UnquantizeF16(ep0.z)
+    );
+    uint3 f16_ep1 = uint3(
+        BC6H_UnquantizeF16(ep1.x),
+        BC6H_UnquantizeF16(ep1.y),
+        BC6H_UnquantizeF16(ep1.z)
+    );
 
-    // Generate 16-level palette (4-bit indices)
+    // Scale F16 values back (multiply by 31 and shift)
+    f16_ep0 = (f16_ep0 * 31u) >> 6;
+    f16_ep1 = (f16_ep1 * 31u) >> 6;
+
+    // Generate 16-level palette using BC6H weight table in F16 space
     float3 palette[16];
     [unroll] for (int p = 0; p < 16; p++) {
-        float t = (float)p / 15.0;
-        palette[p] = (1.0 - t) * fep0 + t * fep1;
+        uint w1 = aWeight4[p];
+        uint w0 = 64u - w1;
+
+        // Compute weighted F16 endpoint for each channel
+        uint f16_p_r = (f16_ep0.x * w0 + f16_ep1.x * w1 + 32) >> 6;
+        uint f16_p_g = (f16_ep0.y * w0 + f16_ep1.y * w1 + 32) >> 6;
+        uint f16_p_b = (f16_ep0.z * w0 + f16_ep1.z * w1 + 32) >> 6;
+
+        // Convert F16 bits back to float
+        palette[p].x = f16tof32(f16_p_r);
+        palette[p].y = f16tof32(f16_p_g);
+        palette[p].z = f16tof32(f16_p_b);
     }
 
     // Assign indices using palette
