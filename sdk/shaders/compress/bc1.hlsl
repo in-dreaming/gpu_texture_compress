@@ -46,6 +46,10 @@ uint2 compress_bc1(float3 pixels[16]) {
     float3 endpoint0 = saturate(mean + axis * maxProj);
     float3 endpoint1 = saturate(mean + axis * minProj);
 
+    // Inset endpoints slightly to reduce palette boundary error
+    endpoint0 = lerp(mean, endpoint0, 6.0 / 7.0);
+    endpoint1 = lerp(mean, endpoint1, 6.0 / 7.0);
+
     // Quantize to RGB565
     uint ep0_565 = EncodeRGB565(endpoint0);
     uint ep1_565 = EncodeRGB565(endpoint1);
