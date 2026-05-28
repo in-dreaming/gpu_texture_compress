@@ -1,0 +1,10 @@
+{
+    "name": "bcn_test",
+    "formats": ["BC1", "BC3", "BC4", "BC5", "BC6H", "BC7"],
+    "textures": [
+        "data/src_texture/Images/Small/LDR-RGB/ldr-rgb-00.png"
+    ],
+    "quality_level": 1,
+    "warmup_runs": 0,
+    "measurement_runs": 1
+}

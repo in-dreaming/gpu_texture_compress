@@ -1,3 +1,31 @@
+# Build outputs
+build/
+out/
+cmake-build-*/
+
+# IDE
+.vs/
+.vscode/settings.json
+*.user
+*.suo
+
+# Dependencies (reference implementations, not tracked)
+deps/
+
+# Zig (legacy)
 .zig-cache/
 zig-out/
 *.o
+
+# Experiment artifacts
+experiments/results.tsv
+run.log
+build_err.log
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Compiled shaders (runtime generated)
+*.spv
+*.dxil

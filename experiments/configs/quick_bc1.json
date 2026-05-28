@@ -1,0 +1,12 @@
+{
+    "name": "quick_bc1",
+    "formats": ["BC1"],
+    "textures": [
+        "data/src_texture/Images/Khronos/LDR-RGB/ldr-rgb-diffuse.png",
+        "data/src_texture/Images/Small/LDR-RGB/ldr-rgb-00.png",
+        "data/src_texture/Images/Small/LDR-RGB/ldr-rgb-01.png"
+    ],
+    "quality_level": 1,
+    "warmup_runs": 1,
+    "measurement_runs": 3
+}
