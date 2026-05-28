@@ -41,10 +41,10 @@ Project root: the git repository root.
 cmake --build build --config Release
 
 # Run a quick experiment (BC1 format, 3 test textures)
-build\Release\gtc_runner.exe --config experiments/configs/quick_bc1.json
+build\src\Release\gtc_runner.exe --config experiments/configs/quick_bc1.json
 
 # Run full evaluation (all formats)
-build\Release\gtc_runner.exe --config experiments/configs/full_sweep.json
+build\src\Release\gtc_runner.exe --config experiments/configs/full_sweep.json
 ```
 
 ## What You CAN Modify
@@ -133,7 +133,7 @@ LOOP FOREVER:
 3. Commit: `git add sdk/shaders/ && git commit -m "brief description"`
 4. Build: `cmake --build build --config Release 2>build_err.log`
    - If build fails: `type build_err.log` (look for shader compilation errors)
-5. Run: `build\Release\gtc_runner.exe --config experiments/configs/quick_bc1.json > run.log 2>&1`
+5. Run: `build\src\Release\gtc_runner.exe --config experiments/configs/quick_bc1.json > run.log 2>&1`
 6. Check results: `findstr "avg_psnr avg_ssim avg_flip avg_time_ms" run.log`
 7. If metrics improved → keep (advance branch)
 8. If metrics worse or crash → discard (`git reset --hard HEAD~1`)

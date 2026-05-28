@@ -25,10 +25,10 @@ cmake --build build --config Release
 
 ```bash
 # Print GPU info
-build\Release\gtc_runner.exe --info
+build\src\Release\gtc_runner.exe --info
 
 # Run experiment
-build\Release\gtc_runner.exe --config experiments/configs/quick_bc1.json
+build\src\Release\gtc_runner.exe --config experiments/configs/quick_bc1.json
 ```
 
 ## Shader Interface
