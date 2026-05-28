@@ -2,78 +2,44 @@
 #include <cstdio>
 #include <cstring>
 #include <cmath>
+#include <algorithm>
+
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+
+// Official decompression libraries
+#include <astcenc.h>
+
+// DirectXTex BC headers
+#include <DirectXMath.h>
+#include "BC.h"
+
+using namespace DirectX;
 
 namespace gtc {
 
-TextureData Decompressor::decompress(const uint8_t* data, uint32_t width, uint32_t height, GtcFormat format) {
-    const auto& info = get_format_info(format);
+// ============================================================================
+// DirectXTex BC decompression wrapper
+// ============================================================================
 
-    switch (format) {
-        case GTC_FORMAT_BC1:  return decompress_bc1(data, width, height);
-        case GTC_FORMAT_BC3:  return decompress_bc3(data, width, height);
-        case GTC_FORMAT_BC4:  return decompress_bc4(data, width, height);
-        case GTC_FORMAT_BC5:  return decompress_bc5(data, width, height);
-        case GTC_FORMAT_BC6H: return decompress_bc6h(data, width, height);
-        case GTC_FORMAT_BC7:  return decompress_bc7(data, width, height);
-        case GTC_FORMAT_ASTC_4x4:  return decompress_astc(data, width, height, 4, 4);
-        case GTC_FORMAT_ASTC_6x6:  return decompress_astc(data, width, height, 6, 6);
-        case GTC_FORMAT_ASTC_8x8:  return decompress_astc(data, width, height, 8, 8);
-        default: {
-            TextureData empty;
-            return empty;
-        }
-    }
-}
-
-// Decode RGB565 to float RGB
-static void decode_rgb565(uint16_t color, uint8_t out[3]) {
-    out[0] = (uint8_t)(((color >> 11) & 0x1F) * 255 / 31);
-    out[1] = (uint8_t)(((color >> 5) & 0x3F) * 255 / 63);
-    out[2] = (uint8_t)((color & 0x1F) * 255 / 31);
-}
-
-void Decompressor::decode_bc1_block(const uint8_t* block, uint8_t out[4 * 4 * 4]) {
-    uint16_t c0 = block[0] | (block[1] << 8);
-    uint16_t c1 = block[2] | (block[3] << 8);
-    uint32_t indices = block[4] | (block[5] << 8) | (block[6] << 16) | (block[7] << 24);
-
-    uint8_t color0[3], color1[3];
-    decode_rgb565(c0, color0);
-    decode_rgb565(c1, color1);
-
-    uint8_t palette[4][4]; // RGBA
-    palette[0][0] = color0[0]; palette[0][1] = color0[1]; palette[0][2] = color0[2]; palette[0][3] = 255;
-    palette[1][0] = color1[0]; palette[1][1] = color1[1]; palette[1][2] = color1[2]; palette[1][3] = 255;
-
-    if (c0 > c1) {
-        // 4-color mode
-        palette[2][0] = (uint8_t)((2 * color0[0] + color1[0] + 1) / 3);
-        palette[2][1] = (uint8_t)((2 * color0[1] + color1[1] + 1) / 3);
-        palette[2][2] = (uint8_t)((2 * color0[2] + color1[2] + 1) / 3);
-        palette[2][3] = 255;
-        palette[3][0] = (uint8_t)((color0[0] + 2 * color1[0] + 1) / 3);
-        palette[3][1] = (uint8_t)((color0[1] + 2 * color1[1] + 1) / 3);
-        palette[3][2] = (uint8_t)((color0[2] + 2 * color1[2] + 1) / 3);
-        palette[3][3] = 255;
-    } else {
-        // 3-color + transparent mode
-        palette[2][0] = (uint8_t)((color0[0] + color1[0]) / 2);
-        palette[2][1] = (uint8_t)((color0[1] + color1[1]) / 2);
-        palette[2][2] = (uint8_t)((color0[2] + color1[2]) / 2);
-        palette[2][3] = 255;
-        palette[3][0] = 0; palette[3][1] = 0; palette[3][2] = 0; palette[3][3] = 0;
-    }
-
+// Helper: convert 16 XMVECTOR (float4) to RGBA8 output
+static void xmvector_to_rgba8(const XMVECTOR pixels[16], uint8_t out[64]) {
     for (int i = 0; i < 16; i++) {
-        uint32_t idx = (indices >> (i * 2)) & 0x3;
-        out[i * 4 + 0] = palette[idx][0];
-        out[i * 4 + 1] = palette[idx][1];
-        out[i * 4 + 2] = palette[idx][2];
-        out[i * 4 + 3] = palette[idx][3];
+        XMFLOAT4 f;
+        XMStoreFloat4(&f, pixels[i]);
+        auto clamp01 = [](float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); };
+        out[i * 4 + 0] = (uint8_t)(clamp01(f.x) * 255.0f + 0.5f);
+        out[i * 4 + 1] = (uint8_t)(clamp01(f.y) * 255.0f + 0.5f);
+        out[i * 4 + 2] = (uint8_t)(clamp01(f.z) * 255.0f + 0.5f);
+        out[i * 4 + 3] = (uint8_t)(clamp01(f.w) * 255.0f + 0.5f);
     }
 }
 
-TextureData Decompressor::decompress_bc1(const uint8_t* data, uint32_t w, uint32_t h) {
+// Generic BCn block decompression using DirectXTex
+typedef void (*BCDecodeFunc)(XMVECTOR*, const uint8_t*);
+
+static TextureData decompress_bc_generic(const uint8_t* data, uint32_t w, uint32_t h,
+                                         uint32_t block_bytes, BCDecodeFunc decode_fn) {
     TextureData result;
     result.width = w;
     result.height = h;
@@ -88,12 +54,14 @@ TextureData Decompressor::decompress_bc1(const uint8_t* data, uint32_t w, uint32
     for (uint32_t by = 0; by < blocks_y; by++) {
         for (uint32_t bx = 0; bx < blocks_x; bx++) {
             uint32_t block_index = by * blocks_x + bx;
-            const uint8_t* block = data + block_index * 8; // BC1 = 8 bytes per block
+            const uint8_t* block = data + (size_t)block_index * block_bytes;
 
-            uint8_t decoded[4 * 4 * 4]; // 16 pixels * 4 channels
-            decode_bc1_block(block, decoded);
+            XMVECTOR pixels[16];
+            decode_fn(pixels, block);
 
-            // Write decoded pixels to output image
+            uint8_t decoded[64]; // 16 pixels × 4 channels
+            xmvector_to_rgba8(pixels, decoded);
+
             for (int py = 0; py < 4; py++) {
                 for (int px = 0; px < 4; px++) {
                     uint32_t img_x = bx * 4 + px;
@@ -114,45 +82,12 @@ TextureData Decompressor::decompress_bc1(const uint8_t* data, uint32_t w, uint32
     return result;
 }
 
-void Decompressor::decode_bc4_block(const uint8_t* block, uint8_t out[16]) {
-    uint8_t ep0 = block[0];
-    uint8_t ep1 = block[1];
+// ============================================================================
+// ASTC decompression using astcenc
+// ============================================================================
 
-    uint8_t palette[8];
-    palette[0] = ep0;
-    palette[1] = ep1;
-
-    if (ep0 > ep1) {
-        // 8-value palette
-        palette[2] = (uint8_t)((6 * ep0 + 1 * ep1) / 7);
-        palette[3] = (uint8_t)((5 * ep0 + 2 * ep1) / 7);
-        palette[4] = (uint8_t)((4 * ep0 + 3 * ep1) / 7);
-        palette[5] = (uint8_t)((3 * ep0 + 4 * ep1) / 7);
-        palette[6] = (uint8_t)((2 * ep0 + 5 * ep1) / 7);
-        palette[7] = (uint8_t)((1 * ep0 + 6 * ep1) / 7);
-    } else {
-        // 6-value palette + special values
-        palette[2] = (uint8_t)((4 * ep0 + 1 * ep1) / 5);
-        palette[3] = (uint8_t)((3 * ep0 + 2 * ep1) / 5);
-        palette[4] = (uint8_t)((2 * ep0 + 3 * ep1) / 5);
-        palette[5] = (uint8_t)((1 * ep0 + 4 * ep1) / 5);
-        palette[6] = 0;
-        palette[7] = 255;
-    }
-
-    // Extract 16 x 3-bit indices from bytes 2-7 (48 bits total)
-    uint64_t bits = 0;
-    for (int i = 0; i < 6; i++) {
-        bits |= (uint64_t)block[2 + i] << (i * 8);
-    }
-
-    for (int i = 0; i < 16; i++) {
-        uint32_t idx = (uint32_t)((bits >> (i * 3)) & 0x7);
-        out[i] = palette[idx];
-    }
-}
-
-TextureData Decompressor::decompress_bc4(const uint8_t* data, uint32_t w, uint32_t h) {
+static TextureData decompress_astc_official(const uint8_t* data, uint32_t w, uint32_t h,
+                                            uint32_t block_x, uint32_t block_y) {
     TextureData result;
     result.width = w;
     result.height = h;
@@ -161,156 +96,135 @@ TextureData Decompressor::decompress_bc4(const uint8_t* data, uint32_t w, uint32
     result.format = TexelFormat::RGBA8_UNORM;
     result.pixels.resize((size_t)w * h * 4);
 
-    uint32_t blocks_x = (w + 3) / 4;
-    uint32_t blocks_y = (h + 3) / 4;
+    // Configure astcenc for decompression
+    astcenc_config config;
+    astcenc_error status = astcenc_config_init(
+        ASTCENC_PRF_LDR_SRGB,    // profile
+        block_x, block_y, 1,      // block dimensions
+        ASTCENC_PRE_FASTEST,       // preset (doesn't matter for decompress)
+        0,                         // flags
+        &config
+    );
 
-    for (uint32_t by = 0; by < blocks_y; by++) {
-        for (uint32_t bx = 0; bx < blocks_x; bx++) {
-            uint32_t block_index = by * blocks_x + bx;
-            const uint8_t* block = data + block_index * 8; // BC4 = 8 bytes per block
-
-            uint8_t decoded[16];
-            decode_bc4_block(block, decoded);
-
-            // Write decoded single-channel values to RGBA output (value, value, value, 255)
-            for (int py = 0; py < 4; py++) {
-                for (int px = 0; px < 4; px++) {
-                    uint32_t img_x = bx * 4 + px;
-                    uint32_t img_y = by * 4 + py;
-                    if (img_x >= w || img_y >= h) continue;
-
-                    uint8_t value = decoded[py * 4 + px];
-                    uint32_t dst_offset = (img_y * w + img_x) * 4;
-                    result.pixels[dst_offset + 0] = value;
-                    result.pixels[dst_offset + 1] = value;
-                    result.pixels[dst_offset + 2] = value;
-                    result.pixels[dst_offset + 3] = 255;
-                }
-            }
-        }
+    if (status != ASTCENC_SUCCESS) {
+        fprintf(stderr, "[Decompressor] ASTC config init failed: %d\n", (int)status);
+        return result;
     }
 
+    astcenc_context* context = nullptr;
+    status = astcenc_context_alloc(&config, 1, &context, nullptr);
+    if (status != ASTCENC_SUCCESS) {
+        fprintf(stderr, "[Decompressor] ASTC context alloc failed: %d\n", (int)status);
+        return result;
+    }
+
+    // Set up output image
+    astcenc_image image;
+    image.dim_x = w;
+    image.dim_y = h;
+    image.dim_z = 1;
+    image.data_type = ASTCENC_TYPE_U8;
+    uint8_t* slices[1] = { result.pixels.data() };
+    image.data = reinterpret_cast<void**>(slices);
+
+    // Compute data length
+    uint32_t blocks_x_count = (w + block_x - 1) / block_x;
+    uint32_t blocks_y_count = (h + block_y - 1) / block_y;
+    size_t data_len = (size_t)blocks_x_count * blocks_y_count * 16;
+
+    // Swizzle: RGBA identity
+    astcenc_swizzle swizzle = { ASTCENC_SWZ_R, ASTCENC_SWZ_G, ASTCENC_SWZ_B, ASTCENC_SWZ_A };
+
+    status = astcenc_decompress_image(context, data, data_len, &image, &swizzle, 0);
+    if (status != ASTCENC_SUCCESS) {
+        fprintf(stderr, "[Decompressor] ASTC decompress failed: %d\n", (int)status);
+    }
+
+    astcenc_context_free(context);
     return result;
+}
+
+// ============================================================================
+// Public API
+// ============================================================================
+
+TextureData Decompressor::decompress(const uint8_t* data, uint32_t width, uint32_t height, GtcFormat format) {
+    switch (format) {
+        case GTC_FORMAT_BC1:  return decompress_bc1(data, width, height);
+        case GTC_FORMAT_BC3:  return decompress_bc3(data, width, height);
+        case GTC_FORMAT_BC4:  return decompress_bc4(data, width, height);
+        case GTC_FORMAT_BC5:  return decompress_bc5(data, width, height);
+        case GTC_FORMAT_BC6H: return decompress_bc6h(data, width, height);
+        case GTC_FORMAT_BC7:  return decompress_bc7(data, width, height);
+        // All ASTC formats
+        case GTC_FORMAT_ASTC_4x4:   return decompress_astc(data, width, height, 4, 4);
+        case GTC_FORMAT_ASTC_5x4:   return decompress_astc(data, width, height, 5, 4);
+        case GTC_FORMAT_ASTC_5x5:   return decompress_astc(data, width, height, 5, 5);
+        case GTC_FORMAT_ASTC_6x5:   return decompress_astc(data, width, height, 6, 5);
+        case GTC_FORMAT_ASTC_6x6:   return decompress_astc(data, width, height, 6, 6);
+        case GTC_FORMAT_ASTC_8x5:   return decompress_astc(data, width, height, 8, 5);
+        case GTC_FORMAT_ASTC_8x6:   return decompress_astc(data, width, height, 8, 6);
+        case GTC_FORMAT_ASTC_8x8:   return decompress_astc(data, width, height, 8, 8);
+        case GTC_FORMAT_ASTC_10x5:  return decompress_astc(data, width, height, 10, 5);
+        case GTC_FORMAT_ASTC_10x6:  return decompress_astc(data, width, height, 10, 6);
+        case GTC_FORMAT_ASTC_10x8:  return decompress_astc(data, width, height, 10, 8);
+        case GTC_FORMAT_ASTC_10x10: return decompress_astc(data, width, height, 10, 10);
+        case GTC_FORMAT_ASTC_12x10: return decompress_astc(data, width, height, 12, 10);
+        case GTC_FORMAT_ASTC_12x12: return decompress_astc(data, width, height, 12, 12);
+        default: {
+            TextureData empty;
+            return empty;
+        }
+    }
+}
+
+// BCn implementations using DirectXTex
+TextureData Decompressor::decompress_bc1(const uint8_t* data, uint32_t w, uint32_t h) {
+    return decompress_bc_generic(data, w, h, 8, D3DXDecodeBC1);
 }
 
 TextureData Decompressor::decompress_bc3(const uint8_t* data, uint32_t w, uint32_t h) {
-    TextureData result;
-    result.width = w;
-    result.height = h;
-    result.channels = 4;
-    result.is_hdr = false;
-    result.format = TexelFormat::RGBA8_UNORM;
-    result.pixels.resize((size_t)w * h * 4);
+    return decompress_bc_generic(data, w, h, 16, D3DXDecodeBC3);
+}
 
-    uint32_t blocks_x = (w + 3) / 4;
-    uint32_t blocks_y = (h + 3) / 4;
-
-    for (uint32_t by = 0; by < blocks_y; by++) {
-        for (uint32_t bx = 0; bx < blocks_x; bx++) {
-            uint32_t block_index = by * blocks_x + bx;
-            const uint8_t* block = data + block_index * 16; // BC3 = 16 bytes per block
-
-            // Bytes 0-7: BC4 block for alpha
-            uint8_t alpha_values[16];
-            decode_bc4_block(block, alpha_values);
-
-            // Bytes 8-15: BC1 block for color
-            uint8_t color_pixels[4 * 4 * 4];
-            decode_bc1_block(block + 8, color_pixels);
-
-            // Combine: BC1 RGB + BC4 alpha
-            for (int py = 0; py < 4; py++) {
-                for (int px = 0; px < 4; px++) {
-                    uint32_t img_x = bx * 4 + px;
-                    uint32_t img_y = by * 4 + py;
-                    if (img_x >= w || img_y >= h) continue;
-
-                    uint32_t texel_index = py * 4 + px;
-                    uint32_t dst_offset = (img_y * w + img_x) * 4;
-                    result.pixels[dst_offset + 0] = color_pixels[texel_index * 4 + 0];
-                    result.pixels[dst_offset + 1] = color_pixels[texel_index * 4 + 1];
-                    result.pixels[dst_offset + 2] = color_pixels[texel_index * 4 + 2];
-                    result.pixels[dst_offset + 3] = alpha_values[texel_index];
-                }
-            }
-        }
-    }
-
-    return result;
+TextureData Decompressor::decompress_bc4(const uint8_t* data, uint32_t w, uint32_t h) {
+    return decompress_bc_generic(data, w, h, 8, D3DXDecodeBC4U);
 }
 
 TextureData Decompressor::decompress_bc5(const uint8_t* data, uint32_t w, uint32_t h) {
-    TextureData result;
-    result.width = w;
-    result.height = h;
-    result.channels = 4;
-    result.is_hdr = false;
-    result.format = TexelFormat::RGBA8_UNORM;
-    result.pixels.resize((size_t)w * h * 4);
-
-    uint32_t blocks_x = (w + 3) / 4;
-    uint32_t blocks_y = (h + 3) / 4;
-
-    for (uint32_t by = 0; by < blocks_y; by++) {
-        for (uint32_t bx = 0; bx < blocks_x; bx++) {
-            uint32_t block_index = by * blocks_x + bx;
-            const uint8_t* block = data + block_index * 16; // BC5 = 16 bytes per block
-
-            // Bytes 0-7: BC4 block for Red channel
-            uint8_t red_values[16];
-            decode_bc4_block(block, red_values);
-
-            // Bytes 8-15: BC4 block for Green channel
-            uint8_t green_values[16];
-            decode_bc4_block(block + 8, green_values);
-
-            // Output: (red, green, 0, 255)
-            for (int py = 0; py < 4; py++) {
-                for (int px = 0; px < 4; px++) {
-                    uint32_t img_x = bx * 4 + px;
-                    uint32_t img_y = by * 4 + py;
-                    if (img_x >= w || img_y >= h) continue;
-
-                    uint32_t texel_index = py * 4 + px;
-                    uint32_t dst_offset = (img_y * w + img_x) * 4;
-                    result.pixels[dst_offset + 0] = red_values[texel_index];
-                    result.pixels[dst_offset + 1] = green_values[texel_index];
-                    result.pixels[dst_offset + 2] = 0;
-                    result.pixels[dst_offset + 3] = 255;
-                }
-            }
-        }
-    }
-
-    return result;
+    return decompress_bc_generic(data, w, h, 16, D3DXDecodeBC5U);
 }
 
 TextureData Decompressor::decompress_bc6h(const uint8_t* data, uint32_t w, uint32_t h) {
-    // TODO: Implement BC6H decompression (HDR)
-    TextureData result;
-    result.width = w; result.height = h; result.channels = 4;
-    result.pixels.resize((size_t)w * h * 4, 128);
-    printf("[Decompressor] WARNING: BC6H decompression not yet implemented\n");
-    return result;
+    return decompress_bc_generic(data, w, h, 16, D3DXDecodeBC6HU);
 }
 
 TextureData Decompressor::decompress_bc7(const uint8_t* data, uint32_t w, uint32_t h) {
-    // TODO: Implement BC7 decompression (8 modes)
-    TextureData result;
-    result.width = w; result.height = h; result.channels = 4;
-    result.pixels.resize((size_t)w * h * 4, 128);
-    printf("[Decompressor] WARNING: BC7 decompression not yet implemented\n");
-    return result;
+    return decompress_bc_generic(data, w, h, 16, D3DXDecodeBC7);
 }
 
+// ASTC implementation using astcenc
 TextureData Decompressor::decompress_astc(const uint8_t* data, uint32_t w, uint32_t h,
                                           uint32_t block_x, uint32_t block_y) {
-    // TODO: Implement ASTC decompression
-    TextureData result;
-    result.width = w; result.height = h; result.channels = 4;
-    result.pixels.resize((size_t)w * h * 4, 128);
-    printf("[Decompressor] WARNING: ASTC %ux%u decompression not yet implemented\n", block_x, block_y);
-    return result;
+    return decompress_astc_official(data, w, h, block_x, block_y);
+}
+
+// Legacy helpers (keep declaration in header satisfied)
+void Decompressor::decode_bc1_block(const uint8_t* block, uint8_t out[4 * 4 * 4]) {
+    XMVECTOR pixels[16];
+    D3DXDecodeBC1(pixels, block);
+    xmvector_to_rgba8(pixels, out);
+}
+
+void Decompressor::decode_bc4_block(const uint8_t* block, uint8_t out[16]) {
+    XMVECTOR pixels[16];
+    D3DXDecodeBC4U(pixels, block);
+    for (int i = 0; i < 16; i++) {
+        XMFLOAT4 f;
+        XMStoreFloat4(&f, pixels[i]);
+        float v = f.x < 0.0f ? 0.0f : (f.x > 1.0f ? 1.0f : f.x);
+        out[i] = (uint8_t)(v * 255.0f + 0.5f);
+    }
 }
 
 } // namespace gtc

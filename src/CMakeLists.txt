@@ -16,11 +16,15 @@ add_executable(gtc_runner ${GTC_SOURCES})
 target_include_directories(gtc_runner PRIVATE
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/external/stb
+    ${CMAKE_SOURCE_DIR}/deps/astc-encoder/Source
+    ${CMAKE_SOURCE_DIR}/deps/DirectXTex/DirectXTex
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries(gtc_runner PRIVATE
     SDL3::SDL3-static
+    astcdec-avx2-static
+    DirectXTex
 )
 
 # Copy SDK shader directory to build output for runtime access
