@@ -92,13 +92,46 @@ build\src\Release\gtc_runner.exe --config experiments/configs/full_sweep.json \
 | FLIP | 越低越好 | 感知差异 |
 | Time | 越低越好 | GPU 压缩耗时 (ms) |
 
-## Baseline 结果
+## Baseline 结果 (2026-05-28)
 
-| 格式 | PSNR | SSIM | Time(ms) |
-|------|------|------|----------|
-| BC1 | 33.1 dB | 0.973 | ~5ms |
-| BC7 | (pending decompressor) | — | ~3ms |
-| ASTC 4×4 | (pending decompressor) | — | ~3ms |
+Initial baseline — PCA endpoints + simple quantization, no iterative refinement.
+
+### BCn Formats
+
+| 格式 | PSNR (dB) | SSIM | Time (ms) | 算法描述 |
+|------|-----------|------|-----------|----------|
+| BC1 | 33.20 | 0.973 | 4.15 | PCA axis + RGB565 endpoints + 4-color palette |
+| BC3 | 33.20 | 0.973 | 1.58 | BC1 color + BC4 alpha |
+| BC4 | 9.74 | 0.243 | 0.56 | Min/max + 8-level palette + 3-bit indices |
+| BC5 | 13.32 | 0.993 | 0.28 | 2× BC4 (R+G channels) |
+| BC6H | 4.46 | 0.048 | 0.35 | Stub (Mode 11 bounding box) |
+| BC7 | **39.96** | **0.992** | 0.35 | Mode 6 only (7-bit RGBA endpoints + 4-bit indices) |
+
+### ASTC Formats
+
+| 格式 | PSNR (dB) | SSIM | Time (ms) | 算法描述 |
+|------|-----------|------|-----------|----------|
+| ASTC 4×4 | 7.56 | 0.001 | 0.85 | 4×4 weight grid, QUANT_4, CEM8 min/max |
+| ASTC 5×4 | 7.56 | 0.001 | 0.81 | 同上 (proportional grid mapping) |
+| ASTC 5×5 | 7.56 | 0.001 | 0.72 | 同上 |
+| ASTC 6×5 | 7.56 | 0.001 | 0.43 | 同上 |
+| ASTC 6×6 | 7.56 | 0.001 | 0.42 | 同上 |
+| ASTC 8×5 | 7.56 | 0.001 | 0.34 | 同上 |
+| ASTC 8×6 | 7.56 | 0.001 | 0.45 | 同上 |
+| ASTC 8×8 | 7.56 | 0.001 | 0.42 | 同上 |
+| ASTC 10×5 | 7.56 | 0.001 | 0.48 | 同上 |
+| ASTC 10×6 | 7.56 | 0.001 | 0.63 | 同上 |
+| ASTC 10×8 | 7.56 | 0.001 | 0.64 | 同上 |
+| ASTC 10×10 | 7.56 | 0.001 | 0.81 | 同上 |
+| ASTC 12×10 | 7.56 | 0.001 | 1.34 | 同上 |
+| ASTC 12×12 | 7.56 | 0.001 | 0.71 | 同上 |
+
+**测试条件**: 3张 PNG 纹理 (1×2048² + 2×256²), Vulkan backend, Windows, measurement_runs=1
+
+### 已知问题
+- BC4 PSNR 偏低: 单通道格式对 RGB 测试图评估不太合理
+- ASTC PSNR 极低: baseline encoder 太简单（固定4×4 weight grid + QUANT_4），需要autoresearch优化
+- BC6H: stub encoder 输出接近全零，待实现
 
 ## 许可证
 

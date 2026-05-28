@@ -18,6 +18,7 @@ zig-out/
 *.o
 
 # Experiment artifacts
+experiments/results/
 experiments/results.tsv
 run.log
 build_err.log
@@ -29,3 +30,5 @@ Thumbs.db
 # Compiled shaders (runtime generated)
 *.spv
 *.dxil
+
+test_output.txt

@@ -90,30 +90,46 @@ int main(int argc, char* argv[]) {
     gtc::ExperimentRunner::print_results(result);
     fflush(stdout);
 
-    // Log results - compute results path if not specified
+    // Log results - each experiment config gets its own results file
+    // e.g., config "quick_bc1" → experiments/results/quick_bc1.tsv
     if (results_path.empty()) {
-        // Default: alongside the config file's parent experiments/ directory
         std::string cfg_dir = config_path;
         size_t last_sep = cfg_dir.find_last_of("/\\");
+        std::string cfg_parent;
         if (last_sep != std::string::npos) {
-            cfg_dir = cfg_dir.substr(0, last_sep);
-            // Go up from configs/ to experiments/
-            size_t parent_sep = cfg_dir.find_last_of("/\\");
+            cfg_parent = cfg_dir.substr(0, last_sep);
+            size_t parent_sep = cfg_parent.find_last_of("/\\");
             if (parent_sep != std::string::npos) {
-                results_path = cfg_dir.substr(0, parent_sep) + "/results.tsv";
-            } else {
-                results_path = "results.tsv";
+                cfg_parent = cfg_parent.substr(0, parent_sep);
             }
-        } else {
-            results_path = "results.tsv";
+        }
+        // Create results directory alongside configs
+        std::string results_dir = cfg_parent.empty() ? "results" : cfg_parent + "/results";
+        // Use config name as filename
+        results_path = results_dir + "/" + config.name + ".tsv";
+    }
+
+    // Ensure results directory exists
+    {
+        std::string dir = results_path;
+        size_t sep = dir.find_last_of("/\\");
+        if (sep != std::string::npos) {
+            std::string dir_path = dir.substr(0, sep);
+            // Simple mkdir (works on Windows)
+            std::string mkdir_cmd = "mkdir \"" + dir_path + "\" 2>nul";
+            system(mkdir_cmd.c_str());
         }
     }
+
     gtc::ResultsLogger logger(results_path);
     if (result.success) {
         logger.log(result, "manual", "keep", config.name);
     } else {
         logger.log(result, "manual", "crash", result.error_message);
     }
+
+    printf("[Results] Logged to: %s\n", results_path.c_str());
+    fflush(stdout);
 
     return result.success ? 0 : 1;
 }

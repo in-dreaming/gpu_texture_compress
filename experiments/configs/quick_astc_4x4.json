@@ -1,0 +1,10 @@
+{
+    "name": "quick_astc_4x4",
+    "formats": ["ASTC_4x4"],
+    "textures": [
+        "data/src_texture/Images/Small/LDR-RGB/ldr-rgb-00.png"
+    ],
+    "quality_level": 1,
+    "warmup_runs": 0,
+    "measurement_runs": 1
+}

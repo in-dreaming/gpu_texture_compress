@@ -1,66 +1,21 @@
+// ASTC 4x4 Compression — GPU Texture Compression SDK
+// Based on deps/astc_encoder (niepp/astc_encoder, MIT license)
+// Production-quality baseline: PCA + QUANT_12 + ISE encoding
+
 #ifndef COMPRESS_ASTC_4X4_HLSL
 #define COMPRESS_ASTC_4X4_HLSL
 
-#include "astc_common.hlsl"
+#define BLOCK_6X6 0
+#define HAS_ALPHA 0
+#include "astc_encode_core.hlsl"
 
-//=============================================================================
-// ASTC 4x4 Block Compression
-// Block: 4x4 = 16 pixels
-// Grid:  4x4 = 16 weights (1:1 pixel-to-weight mapping)
-// Mode:  QUANT_4 (2 bits/weight), CEM 8 (LDR RGB Direct)
-//=============================================================================
-
-uint4 compress_astc_4x4(float4 pixels[16])
-{
-    // 1. Find min/max RGB across all pixels
-    float3 min_rgb = pixels[0].rgb;
-    float3 max_rgb = pixels[0].rgb;
-    for (int i = 1; i < 16; i++)
-    {
-        min_rgb = min(min_rgb, pixels[i].rgb);
-        max_rgb = max(max_rgb, pixels[i].rgb);
+// Main entry: takes 16 RGBA pixels [0,1], returns 128-bit ASTC block
+uint4 compress_astc_4x4(float4 pixels[16]) {
+    float4 texels[BLOCK_SIZE];
+    for (int i = 0; i < 16; i++) {
+        texels[i] = pixels[i] * 255.0f;
     }
-
-    // 2. Check for uniform block -> void extent
-    float3 extent = max_rgb - min_rgb;
-    float max_extent = max(extent.x, max(extent.y, extent.z));
-    if (max_extent < (1.0f / 255.0f))
-    {
-        float4 avg = float4((min_rgb + max_rgb) * 0.5f, 1.0f);
-        return astc_void_extent(avg);
-    }
-
-    // 3. Quantize endpoints to 8-bit
-    uint endpoints[6];
-    endpoints[0] = (uint)(saturate(min_rgb.r) * 255.0f + 0.5f);
-    endpoints[1] = (uint)(saturate(max_rgb.r) * 255.0f + 0.5f);
-    endpoints[2] = (uint)(saturate(min_rgb.g) * 255.0f + 0.5f);
-    endpoints[3] = (uint)(saturate(max_rgb.g) * 255.0f + 0.5f);
-    endpoints[4] = (uint)(saturate(min_rgb.b) * 255.0f + 0.5f);
-    endpoints[5] = (uint)(saturate(max_rgb.b) * 255.0f + 0.5f);
-
-    // 4. Compute weights: 4x4 grid maps 1:1 to 4x4 pixels
-    float3 axis = max_rgb - min_rgb;
-    float axis_len2 = dot(axis, axis);
-    uint weights[16];
-
-    [unroll]
-    for (int gy = 0; gy < 4; gy++)
-    {
-        [unroll]
-        for (int gx = 0; gx < 4; gx++)
-        {
-            // Direct 1:1 mapping for 4x4
-            uint pixel_idx = (uint)(gy) * 4u + (uint)(gx);
-
-            float3 color = pixels[pixel_idx].rgb;
-            float t = dot(color - min_rgb, axis) / axis_len2;
-            weights[gy * 4 + gx] = astc_quantize_weight_q4(t);
-        }
-    }
-
-    // 5. Pack and return
-    return astc_pack_block(endpoints, weights);
+    return encode_block(texels);
 }
 
 #endif // COMPRESS_ASTC_4X4_HLSL
