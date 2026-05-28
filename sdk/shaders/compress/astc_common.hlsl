@@ -9,8 +9,25 @@
 // Color Endpoint Mode constants
 #define ASTC_CEM_LDR_RGB_DIRECT 8
 
-// Block mode: 4x4 weight grid, QUANT_4 (2 bits/weight), single plane
-#define ASTC_BLOCK_MODE_4x4_Q4 0x042u
+// Block modes for all ASTC block sizes
+// QUANT_4 (2 bits/weight), single plane encoding (d=0), encoding family 1 (h=0)
+// Formula: blockmode = ((r>>1) & 0x3) | ((r&0x1) << 4) | ((a&0x3) << 5) | ((b&0x3) << 7) | (h << 9) | (d << 10)
+// Where: r=4 (for weight_quantmethod=2), a=(Y_GRIDS-2)&0x3, b=(X_GRIDS-4)&0x3
+
+#define ASTC_BLOCK_MODE_4x4_Q4    0x0042u
+#define ASTC_BLOCK_MODE_5x4_Q4    0x00C2u
+#define ASTC_BLOCK_MODE_5x5_Q4    0x00E2u
+#define ASTC_BLOCK_MODE_6x5_Q4    0x0162u
+#define ASTC_BLOCK_MODE_6x6_Q4    0x0102u
+#define ASTC_BLOCK_MODE_8x5_Q4    0x0062u
+#define ASTC_BLOCK_MODE_8x6_Q4    0x0002u
+#define ASTC_BLOCK_MODE_8x8_Q4    0x0042u
+#define ASTC_BLOCK_MODE_10x5_Q4   0x0162u
+#define ASTC_BLOCK_MODE_10x6_Q4   0x0102u
+#define ASTC_BLOCK_MODE_10x8_Q4   0x0142u
+#define ASTC_BLOCK_MODE_10x10_Q4  0x0102u
+#define ASTC_BLOCK_MODE_12x10_Q4  0x0002u
+#define ASTC_BLOCK_MODE_12x12_Q4  0x0042u
 
 //-----------------------------------------------------------------------------
 // Bit manipulation
@@ -95,10 +112,11 @@ uint astc_quantize_weight_q4(float t)
 // Endpoint order: e0_r, e1_r, e0_g, e1_g, e0_b, e1_b
 //-----------------------------------------------------------------------------
 
-uint4 astc_pack_block(uint endpoints[6], uint weights[16])
+// Pack block with explicit block mode parameter
+uint4 astc_pack_block_with_mode(uint block_mode, uint endpoints[6], uint weights[16])
 {
     // Header: block_mode | partition_count | CEM
-    uint header = ASTC_BLOCK_MODE_4x4_Q4
+    uint header = block_mode
                 | (0u << 11u)
                 | ((uint)(ASTC_CEM_LDR_RGB_DIRECT) << 13u);
 
@@ -126,6 +144,12 @@ uint4 astc_pack_block(uint endpoints[6], uint weights[16])
     block.w = astc_reverse_bits_32(weight_bits);
 
     return block;
+}
+
+// Legacy function for backward compatibility (4x4 default)
+uint4 astc_pack_block(uint endpoints[6], uint weights[16])
+{
+    return astc_pack_block_with_mode(ASTC_BLOCK_MODE_4x4_Q4, endpoints, weights);
 }
 
 #endif // ASTC_COMMON_HLSL

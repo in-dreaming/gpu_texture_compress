@@ -1,0 +1,26 @@
+{
+    "name": "test_astc_all_formats_comprehensive",
+    "formats": [
+        "ASTC_4x4",
+        "ASTC_5x4",
+        "ASTC_5x5",
+        "ASTC_6x5",
+        "ASTC_6x6",
+        "ASTC_8x5",
+        "ASTC_8x6",
+        "ASTC_8x8",
+        "ASTC_10x5",
+        "ASTC_10x6",
+        "ASTC_10x8",
+        "ASTC_10x10",
+        "ASTC_12x10",
+        "ASTC_12x12"
+    ],
+    "textures": [
+        "src_texture/Images/Small/LDR-RGB/ldr-rgb-00.png",
+        "src_texture/Images/Small/LDR-RGB/ldr-rgb-01.png"
+    ],
+    "quality_level": 1,
+    "warmup_runs": 0,
+    "measurement_runs": 1
+}

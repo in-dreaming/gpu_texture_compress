@@ -61,8 +61,8 @@ uint4 compress_astc_10x5(float4 pixels[50])
         }
     }
 
-    // 5. Pack and return
-    return astc_pack_block(endpoints, weights);
+    // 5. Pack and return with correct block mode for 10x5
+    return astc_pack_block_with_mode(ASTC_BLOCK_MODE_10x5_Q4, endpoints, weights);
 }
 
 #endif // COMPRESS_ASTC_10X5_HLSL

@@ -102,7 +102,7 @@ static TextureData decompress_astc_official(const uint8_t* data, uint32_t w, uin
         ASTCENC_PRF_LDR_SRGB,    // profile
         block_x, block_y, 1,      // block dimensions
         ASTCENC_PRE_FASTEST,       // preset (doesn't matter for decompress)
-        0,                         // flags
+        ASTCENC_FLG_DECOMPRESS_ONLY,  // flags: must set for decompress-only builds
         &config
     );
 

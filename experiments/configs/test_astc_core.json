@@ -1,0 +1,15 @@
+{
+    "name": "test_astc_core_formats",
+    "formats": [
+        "ASTC_4x4",
+        "ASTC_6x6",
+        "ASTC_8x8"
+    ],
+    "textures": [
+        "src_texture/Images/Small/LDR-RGB/ldr-rgb-00.png",
+        "src_texture/Images/Small/LDR-RGB/ldr-rgb-01.png"
+    ],
+    "quality_level": 1,
+    "warmup_runs": 0,
+    "measurement_runs": 1
+}

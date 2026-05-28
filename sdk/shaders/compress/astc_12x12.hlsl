@@ -61,8 +61,8 @@ uint4 compress_astc_12x12(float4 pixels[144])
         }
     }
 
-    // 5. Pack and return
-    return astc_pack_block(endpoints, weights);
+    // 5. Pack and return with correct block mode for 12x12
+    return astc_pack_block_with_mode(ASTC_BLOCK_MODE_12x12_Q4, endpoints, weights);
 }
 
 #endif // COMPRESS_ASTC_12X12_HLSL

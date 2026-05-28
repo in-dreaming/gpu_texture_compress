@@ -1,0 +1,11 @@
+{
+    "name": "bc4_grayscale",
+    "formats": ["BC4"],
+    "textures": [
+        "src_texture/Images/Small/LDR-L/ldr-l-00-3.dds",
+        "src_texture/Images/Small/LDR-L/ldr-l-01-3.dds"
+    ],
+    "quality_level": 1,
+    "warmup_runs": 0,
+    "measurement_runs": 1
+}

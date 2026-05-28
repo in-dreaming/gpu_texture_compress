@@ -61,8 +61,8 @@ uint4 compress_astc_8x5(float4 pixels[40])
         }
     }
 
-    // 5. Pack and return
-    return astc_pack_block(endpoints, weights);
+    // 5. Pack and return with correct block mode for 8x5
+    return astc_pack_block_with_mode(ASTC_BLOCK_MODE_8x5_Q4, endpoints, weights);
 }
 
 #endif // COMPRESS_ASTC_8X5_HLSL

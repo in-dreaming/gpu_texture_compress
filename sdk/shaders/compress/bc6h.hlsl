@@ -1,11 +1,6 @@
-// compress/bc6h.hlsl - Pure BC6H compression function (STUB)
-// No global state, no texture reads.
+// compress/bc6h.hlsl - BC6H compression with improved PCA-based endpoints
 // BC6H format: 128-bit block for HDR (half-float) RGB textures
-// This is a PLACEHOLDER for autoresearch - outputs a valid minimal encoding.
-//
-// BC6H is complex with 14 modes, partition tables, and variable-length fields.
-// This stub uses Mode 11 (one region, no partitions) with a simple bounding-box
-// approach. Quality will be poor - replace during autoresearch phase.
+// Uses Mode 11 (one region, unsigned, 10-bit endpoints, 4-bit indices)
 
 #ifndef COMPRESS_BC6H_HLSL
 #define COMPRESS_BC6H_HLSL
@@ -38,74 +33,114 @@ void BC6H_WriteBits(inout uint4 block, uint value, uint bitPos, uint numBits) {
     }
 }
 
-// Compress a 4x4 block of HDR RGB pixels into BC6H (128-bit block as uint4)
-// STUB: Uses Mode 11 (one region, 10-bit endpoints, 4-bit indices)
-// Mode 11 layout (unsigned):
-//   [0..4]    mode (5 bits) = 0x03 (00011)
-//   [5..14]   R0 (10 bits)
-//   [15..24]  G0 (10 bits)
-//   [25..34]  B0 (10 bits)
-//   [35..44]  R1 (10 bits)
-//   [45..54]  G1 (10 bits)
-//   [55..64]  B1 (10 bits)
-//   [65..127] indices: anchor (3 bits) + 15 pixels (4 bits) = 63 bits
-//   Total: 5 + 60 + 63 = 128
-uint4 compress_bc6h(float3 pixels[16]) {
-    // Find bounding box of HDR values (clamp negative to zero for unsigned mode)
-    float3 minColor = pixels[0];
-    float3 maxColor = pixels[0];
-    [unroll] for (int i = 1; i < 16; i++) {
-        minColor.x = min(minColor.x, pixels[i].x);
-        minColor.y = min(minColor.y, pixels[i].y);
-        minColor.z = min(minColor.z, pixels[i].z);
-        maxColor.x = max(maxColor.x, pixels[i].x);
-        maxColor.y = max(maxColor.y, pixels[i].y);
-        maxColor.z = max(maxColor.z, pixels[i].z);
+// Compute PCA axis for HDR RGB data
+float3 BC6H_ComputePCAAxis(float3 pixels[16], float3 mean) {
+    // Covariance matrix (symmetric 3x3: xx, xy, xz, yy, yz, zz)
+    float cov[6] = {0, 0, 0, 0, 0, 0};
+
+    [unroll] for (int i = 0; i < 16; i++) {
+        float3 d = pixels[i] - mean;
+        cov[0] += d.x * d.x;  // xx
+        cov[1] += d.x * d.y;  // xy
+        cov[2] += d.x * d.z;  // xz
+        cov[3] += d.y * d.y;  // yy
+        cov[4] += d.y * d.z;  // yz
+        cov[5] += d.z * d.z;  // zz
     }
+
+    // Power iteration to find dominant eigenvector
+    float3 axis = normalize(float3(1.0, 1.0, 1.0));
+
+    [unroll] for (int iter = 0; iter < 4; iter++) {
+        float3 newAxis;
+        newAxis.x = cov[0] * axis.x + cov[1] * axis.y + cov[2] * axis.z;
+        newAxis.y = cov[1] * axis.x + cov[3] * axis.y + cov[4] * axis.z;
+        newAxis.z = cov[2] * axis.x + cov[4] * axis.y + cov[5] * axis.z;
+
+        float len = length(newAxis);
+        if (len < 0.00001) return float3(1, 0, 0);
+
+        axis = newAxis / len;
+    }
+
+    return axis;
+}
+
+// Compress a 4x4 block of HDR RGB pixels into BC6H (Mode 11)
+uint4 compress_bc6h(float3 pixels[16]) {
+    // Compute mean
+    float3 mean = float3(0, 0, 0);
+    [unroll] for (int i = 0; i < 16; i++) {
+        mean += pixels[i];
+    }
+    mean /= 16.0;
 
     // Clamp to non-negative (unsigned BC6H)
-    minColor = max(minColor, float3(0, 0, 0));
-    maxColor = max(maxColor, float3(0, 0, 0));
-
-    // Determine normalization scale
-    // Mode 11 endpoints represent values in range [0, 1] mapped to half-float via
-    // unquantize. For this stub, normalize to [0, 1] range using the max value.
-    float scale = max(max(maxColor.x, maxColor.y), maxColor.z);
-    if (scale < 0.00001) {
-        scale = 1.0;
+    [unroll] for (int i = 0; i < 16; i++) {
+        pixels[i] = max(pixels[i], float3(0, 0, 0));
     }
-    float invScale = 1.0 / scale;
+    mean = max(mean, float3(0, 0, 0));
 
-    // Quantize endpoints to 10 bits (0..1023)
+    // PCA to find principal color direction
+    float3 axis = BC6H_ComputePCAAxis(pixels, mean);
+
+    // Project pixels onto axis
+    float minProj = 1e10;
+    float maxProj = -1e10;
+    [unroll] for (int pi = 0; pi < 16; pi++) {
+        float proj = dot(pixels[pi] - mean, axis);
+        minProj = min(minProj, proj);
+        maxProj = max(maxProj, proj);
+    }
+
+    // Compute endpoints
+    float3 endpoint0 = mean + axis * maxProj;
+    float3 endpoint1 = mean + axis * minProj;
+
+    // Directly quantize endpoints without intermediate normalization
+    // BC6H Mode 11 uses 10-bit values, which can represent [0, 1023]
+    // For HDR values, we clamp each component independently
     uint3 ep0 = uint3(
-        min((uint)(maxColor.x * invScale * 1023.0 + 0.5), 1023u),
-        min((uint)(maxColor.y * invScale * 1023.0 + 0.5), 1023u),
-        min((uint)(maxColor.z * invScale * 1023.0 + 0.5), 1023u)
+        min((uint)(saturate(endpoint0.x) * 1023.0 + 0.5), 1023u),
+        min((uint)(saturate(endpoint0.y) * 1023.0 + 0.5), 1023u),
+        min((uint)(saturate(endpoint0.z) * 1023.0 + 0.5), 1023u)
     );
     uint3 ep1 = uint3(
-        min((uint)(minColor.x * invScale * 1023.0 + 0.5), 1023u),
-        min((uint)(minColor.y * invScale * 1023.0 + 0.5), 1023u),
-        min((uint)(minColor.z * invScale * 1023.0 + 0.5), 1023u)
+        min((uint)(saturate(endpoint1.x) * 1023.0 + 0.5), 1023u),
+        min((uint)(saturate(endpoint1.y) * 1023.0 + 0.5), 1023u),
+        min((uint)(saturate(endpoint1.z) * 1023.0 + 0.5), 1023u)
     );
 
-    // Compute 4-bit indices via projection along bounding box diagonal
-    float3 diagAxis = maxColor - minColor;
-    float diagLen = dot(diagAxis, diagAxis);
+    // Reconstruct float endpoints for index assignment
+    // BC6H stores 10-bit fixed values as-is, then the decompressor scales them by (max / 1023)
+    // where max is the maximum endpoint value
+    float3 fep0 = float3(float(ep0.x) / 1023.0, float(ep0.y) / 1023.0, float(ep0.z) / 1023.0);
+    float3 fep1 = float3(float(ep1.x) / 1023.0, float(ep1.y) / 1023.0, float(ep1.z) / 1023.0);
 
-    uint indices[16];
-    [unroll] for (int pi = 0; pi < 16; pi++) {
-        float proj = 0.0;
-        if (diagLen > 0.00001) {
-            proj = saturate(dot(max(pixels[pi], float3(0,0,0)) - minColor, diagAxis) / diagLen);
-        }
-        uint idx = (uint)(proj * 15.0 + 0.5);
-        if (idx > 15) {
-            idx = 15;
-        }
-        indices[pi] = idx;
+    // Generate 16-level palette (4-bit indices)
+    float3 palette[16];
+    [unroll] for (int p = 0; p < 16; p++) {
+        float t = (float)p / 15.0;
+        palette[p] = (1.0 - t) * fep0 + t * fep1;
     }
 
-    // If anchor pixel (index 0) has MSB set, flip indices and swap endpoints
+    // Assign indices using palette
+    uint indices[16];
+    [unroll] for (int qi = 0; qi < 16; qi++) {
+        float bestDist = 1e10;
+        uint bestIdx = 0;
+        [unroll] for (int j = 0; j < 16; j++) {
+            float3 diff = pixels[qi] - palette[j];
+            float dist = dot(diff, diff);
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestIdx = (uint)j;
+            }
+        }
+        indices[qi] = bestIdx;
+    }
+
+    // Anchor bit handling: if anchor (index 0) MSB set, flip indices and swap endpoints
     if (indices[0] >= 8) {
         [unroll] for (int fi = 0; fi < 16; fi++) {
             indices[fi] = 15 - indices[fi];
@@ -115,7 +150,7 @@ uint4 compress_bc6h(float3 pixels[16]) {
         ep1 = tmpEp;
     }
 
-    // Pack into 128-bit block using Mode 11 layout
+    // Pack into 128-bit block
     uint4 block = uint4(0, 0, 0, 0);
     uint bitPos = 0;
 
@@ -123,31 +158,15 @@ uint4 compress_bc6h(float3 pixels[16]) {
     BC6H_WriteBits(block, 3u, bitPos, 5);
     bitPos += 5;
 
-    // Endpoint R0 (10 bits)
-    BC6H_WriteBits(block, ep0.x, bitPos, 10);
-    bitPos += 10;
+    // Endpoints (R0, G0, B0, R1, G1, B1 - 10 bits each)
+    BC6H_WriteBits(block, ep0.x, bitPos, 10); bitPos += 10;
+    BC6H_WriteBits(block, ep0.y, bitPos, 10); bitPos += 10;
+    BC6H_WriteBits(block, ep0.z, bitPos, 10); bitPos += 10;
+    BC6H_WriteBits(block, ep1.x, bitPos, 10); bitPos += 10;
+    BC6H_WriteBits(block, ep1.y, bitPos, 10); bitPos += 10;
+    BC6H_WriteBits(block, ep1.z, bitPos, 10); bitPos += 10;
 
-    // Endpoint G0 (10 bits)
-    BC6H_WriteBits(block, ep0.y, bitPos, 10);
-    bitPos += 10;
-
-    // Endpoint B0 (10 bits)
-    BC6H_WriteBits(block, ep0.z, bitPos, 10);
-    bitPos += 10;
-
-    // Endpoint R1 (10 bits)
-    BC6H_WriteBits(block, ep1.x, bitPos, 10);
-    bitPos += 10;
-
-    // Endpoint G1 (10 bits)
-    BC6H_WriteBits(block, ep1.y, bitPos, 10);
-    bitPos += 10;
-
-    // Endpoint B1 (10 bits)
-    BC6H_WriteBits(block, ep1.z, bitPos, 10);
-    bitPos += 10;
-
-    // Indices: anchor pixel (3 bits, MSB implied 0), then 15 pixels (4 bits each)
+    // Indices: anchor pixel (3 bits, MSB implicit 0), then 15 pixels (4 bits each)
     BC6H_WriteBits(block, indices[0] & 0x7, bitPos, 3);
     bitPos += 3;
 

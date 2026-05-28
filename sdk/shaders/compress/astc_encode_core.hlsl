@@ -31,6 +31,7 @@
 
 #define BLOCK_BYTES 16
 
+// Weight grid is always 4x4 regardless of block size
 #define X_GRIDS 4
 #define Y_GRIDS 4
 
@@ -447,12 +448,15 @@ uint assemble_blockmode(uint weight_quantmethod)
 	D   H     B       A     R0  0   0   R2  R1  B + 4   A + 2
 */
 
-	uint a = (Y_GRIDS - 2) & 0x3;
-	uint b = (X_GRIDS - 4) & 0x3;
+	// A and B encode the actual block dimensions (not weight grid)
+	// Width = B + 4, Height = A + 2
+	// For a DIMxDIM block: A = DIM - 2, B = DIM - 4
+	uint a = (DIM - 2) & 0x3;
+	uint b = (DIM - 4) & 0x3;
 
 	uint d = 0;  // dual plane
 
-	// more details from "Table C.2.7 - Weight Range Encodings"	
+	// more details from "Table C.2.7 - Weight Range Encodings"
 	uint h = (weight_quantmethod < 6) ? 0 : 1;	// "a precision bit H"
 	uint r = (weight_quantmethod % 6) + 2;		// "The weight ranges are encoded using a 3 bit value R"
 

@@ -1,0 +1,10 @@
+{
+    "name": "bc6h_hdr",
+    "formats": ["BC6H"],
+    "textures": [
+        "src_texture/Images/Small/HDR-RGB/hdr-rgb-00.hdr"
+    ],
+    "quality_level": 1,
+    "warmup_runs": 0,
+    "measurement_runs": 1
+}

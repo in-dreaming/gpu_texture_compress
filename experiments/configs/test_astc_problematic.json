@@ -1,0 +1,14 @@
+{
+    "name": "test_astc_problematic_formats",
+    "formats": [
+        "ASTC_8x6",
+        "ASTC_12x10"
+    ],
+    "textures": [
+        "src_texture/Images/Small/LDR-RGB/ldr-rgb-00.png",
+        "src_texture/Images/Small/LDR-RGB/ldr-rgb-01.png"
+    ],
+    "quality_level": 1,
+    "warmup_runs": 0,
+    "measurement_runs": 1
+}
