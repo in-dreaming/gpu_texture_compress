@@ -27,6 +27,9 @@ public:
 private:
     // BC1: decode one 64-bit block to 4x4 RGBA8 pixels
     void decode_bc1_block(const uint8_t* block, uint8_t out[4 * 4 * 4]);
+
+    // BC4: decode one 64-bit block to 16 single-channel values
+    void decode_bc4_block(const uint8_t* block, uint8_t out[16]);
 };
 
 } // namespace gtc

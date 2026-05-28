@@ -114,31 +114,174 @@ TextureData Decompressor::decompress_bc1(const uint8_t* data, uint32_t w, uint32
     return result;
 }
 
-// Stub implementations for other formats (to be filled in later)
-TextureData Decompressor::decompress_bc3(const uint8_t* data, uint32_t w, uint32_t h) {
-    // TODO: Implement BC3 decompression (BC1 color + BC4 alpha)
-    TextureData result;
-    result.width = w; result.height = h; result.channels = 4;
-    result.pixels.resize((size_t)w * h * 4, 128);
-    printf("[Decompressor] WARNING: BC3 decompression not yet implemented\n");
-    return result;
+void Decompressor::decode_bc4_block(const uint8_t* block, uint8_t out[16]) {
+    uint8_t ep0 = block[0];
+    uint8_t ep1 = block[1];
+
+    uint8_t palette[8];
+    palette[0] = ep0;
+    palette[1] = ep1;
+
+    if (ep0 > ep1) {
+        // 8-value palette
+        palette[2] = (uint8_t)((6 * ep0 + 1 * ep1) / 7);
+        palette[3] = (uint8_t)((5 * ep0 + 2 * ep1) / 7);
+        palette[4] = (uint8_t)((4 * ep0 + 3 * ep1) / 7);
+        palette[5] = (uint8_t)((3 * ep0 + 4 * ep1) / 7);
+        palette[6] = (uint8_t)((2 * ep0 + 5 * ep1) / 7);
+        palette[7] = (uint8_t)((1 * ep0 + 6 * ep1) / 7);
+    } else {
+        // 6-value palette + special values
+        palette[2] = (uint8_t)((4 * ep0 + 1 * ep1) / 5);
+        palette[3] = (uint8_t)((3 * ep0 + 2 * ep1) / 5);
+        palette[4] = (uint8_t)((2 * ep0 + 3 * ep1) / 5);
+        palette[5] = (uint8_t)((1 * ep0 + 4 * ep1) / 5);
+        palette[6] = 0;
+        palette[7] = 255;
+    }
+
+    // Extract 16 x 3-bit indices from bytes 2-7 (48 bits total)
+    uint64_t bits = 0;
+    for (int i = 0; i < 6; i++) {
+        bits |= (uint64_t)block[2 + i] << (i * 8);
+    }
+
+    for (int i = 0; i < 16; i++) {
+        uint32_t idx = (uint32_t)((bits >> (i * 3)) & 0x7);
+        out[i] = palette[idx];
+    }
 }
 
 TextureData Decompressor::decompress_bc4(const uint8_t* data, uint32_t w, uint32_t h) {
-    // TODO: Implement BC4 decompression (single channel)
     TextureData result;
-    result.width = w; result.height = h; result.channels = 4;
-    result.pixels.resize((size_t)w * h * 4, 128);
-    printf("[Decompressor] WARNING: BC4 decompression not yet implemented\n");
+    result.width = w;
+    result.height = h;
+    result.channels = 4;
+    result.is_hdr = false;
+    result.format = TexelFormat::RGBA8_UNORM;
+    result.pixels.resize((size_t)w * h * 4);
+
+    uint32_t blocks_x = (w + 3) / 4;
+    uint32_t blocks_y = (h + 3) / 4;
+
+    for (uint32_t by = 0; by < blocks_y; by++) {
+        for (uint32_t bx = 0; bx < blocks_x; bx++) {
+            uint32_t block_index = by * blocks_x + bx;
+            const uint8_t* block = data + block_index * 8; // BC4 = 8 bytes per block
+
+            uint8_t decoded[16];
+            decode_bc4_block(block, decoded);
+
+            // Write decoded single-channel values to RGBA output (value, value, value, 255)
+            for (int py = 0; py < 4; py++) {
+                for (int px = 0; px < 4; px++) {
+                    uint32_t img_x = bx * 4 + px;
+                    uint32_t img_y = by * 4 + py;
+                    if (img_x >= w || img_y >= h) continue;
+
+                    uint8_t value = decoded[py * 4 + px];
+                    uint32_t dst_offset = (img_y * w + img_x) * 4;
+                    result.pixels[dst_offset + 0] = value;
+                    result.pixels[dst_offset + 1] = value;
+                    result.pixels[dst_offset + 2] = value;
+                    result.pixels[dst_offset + 3] = 255;
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+TextureData Decompressor::decompress_bc3(const uint8_t* data, uint32_t w, uint32_t h) {
+    TextureData result;
+    result.width = w;
+    result.height = h;
+    result.channels = 4;
+    result.is_hdr = false;
+    result.format = TexelFormat::RGBA8_UNORM;
+    result.pixels.resize((size_t)w * h * 4);
+
+    uint32_t blocks_x = (w + 3) / 4;
+    uint32_t blocks_y = (h + 3) / 4;
+
+    for (uint32_t by = 0; by < blocks_y; by++) {
+        for (uint32_t bx = 0; bx < blocks_x; bx++) {
+            uint32_t block_index = by * blocks_x + bx;
+            const uint8_t* block = data + block_index * 16; // BC3 = 16 bytes per block
+
+            // Bytes 0-7: BC4 block for alpha
+            uint8_t alpha_values[16];
+            decode_bc4_block(block, alpha_values);
+
+            // Bytes 8-15: BC1 block for color
+            uint8_t color_pixels[4 * 4 * 4];
+            decode_bc1_block(block + 8, color_pixels);
+
+            // Combine: BC1 RGB + BC4 alpha
+            for (int py = 0; py < 4; py++) {
+                for (int px = 0; px < 4; px++) {
+                    uint32_t img_x = bx * 4 + px;
+                    uint32_t img_y = by * 4 + py;
+                    if (img_x >= w || img_y >= h) continue;
+
+                    uint32_t texel_index = py * 4 + px;
+                    uint32_t dst_offset = (img_y * w + img_x) * 4;
+                    result.pixels[dst_offset + 0] = color_pixels[texel_index * 4 + 0];
+                    result.pixels[dst_offset + 1] = color_pixels[texel_index * 4 + 1];
+                    result.pixels[dst_offset + 2] = color_pixels[texel_index * 4 + 2];
+                    result.pixels[dst_offset + 3] = alpha_values[texel_index];
+                }
+            }
+        }
+    }
+
     return result;
 }
 
 TextureData Decompressor::decompress_bc5(const uint8_t* data, uint32_t w, uint32_t h) {
-    // TODO: Implement BC5 decompression (two channels)
     TextureData result;
-    result.width = w; result.height = h; result.channels = 4;
-    result.pixels.resize((size_t)w * h * 4, 128);
-    printf("[Decompressor] WARNING: BC5 decompression not yet implemented\n");
+    result.width = w;
+    result.height = h;
+    result.channels = 4;
+    result.is_hdr = false;
+    result.format = TexelFormat::RGBA8_UNORM;
+    result.pixels.resize((size_t)w * h * 4);
+
+    uint32_t blocks_x = (w + 3) / 4;
+    uint32_t blocks_y = (h + 3) / 4;
+
+    for (uint32_t by = 0; by < blocks_y; by++) {
+        for (uint32_t bx = 0; bx < blocks_x; bx++) {
+            uint32_t block_index = by * blocks_x + bx;
+            const uint8_t* block = data + block_index * 16; // BC5 = 16 bytes per block
+
+            // Bytes 0-7: BC4 block for Red channel
+            uint8_t red_values[16];
+            decode_bc4_block(block, red_values);
+
+            // Bytes 8-15: BC4 block for Green channel
+            uint8_t green_values[16];
+            decode_bc4_block(block + 8, green_values);
+
+            // Output: (red, green, 0, 255)
+            for (int py = 0; py < 4; py++) {
+                for (int px = 0; px < 4; px++) {
+                    uint32_t img_x = bx * 4 + px;
+                    uint32_t img_y = by * 4 + py;
+                    if (img_x >= w || img_y >= h) continue;
+
+                    uint32_t texel_index = py * 4 + px;
+                    uint32_t dst_offset = (img_y * w + img_x) * 4;
+                    result.pixels[dst_offset + 0] = red_values[texel_index];
+                    result.pixels[dst_offset + 1] = green_values[texel_index];
+                    result.pixels[dst_offset + 2] = 0;
+                    result.pixels[dst_offset + 3] = 255;
+                }
+            }
+        }
+    }
+
     return result;
 }
 

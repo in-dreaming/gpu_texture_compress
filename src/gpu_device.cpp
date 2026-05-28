@@ -27,8 +27,12 @@ bool GpuDevice::init(const char* preferred_backend) {
     // Disable debug mode to avoid validation layer noise during experiments
     const char* backend = preferred_backend ? preferred_backend : "vulkan";
 
-    // Create GPU device (debug=false to skip validation layers)
-    device_ = SDL_CreateGPUDevice(shader_formats, false, backend);
+    // Create GPU device (debug=true for Vulkan validation)
+    device_ = SDL_CreateGPUDevice(shader_formats, true, backend);
+    if (!device_) {
+        // Fallback: try without validation
+        device_ = SDL_CreateGPUDevice(shader_formats, false, backend);
+    }
     if (!device_) {
         // Fallback: try any available backend
         device_ = SDL_CreateGPUDevice(shader_formats, false, nullptr);

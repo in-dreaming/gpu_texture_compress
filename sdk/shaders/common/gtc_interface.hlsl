@@ -5,8 +5,9 @@
 #ifndef GTC_INTERFACE_HLSL
 #define GTC_INTERFACE_HLSL
 
-// Push constant struct (SDL3 GPU passes uniform data via push constants)
-struct GtcParams {
+// Uniform buffer (SDL3 GPU pushes this via SDL_PushGPUComputeUniformData)
+// DXC compiles this to a UBO at binding 2 (after sampler@0 + storage_buffer@1)
+cbuffer GtcParams : register(b0) {
     int TexWidth;
     int TexHeight;
     int BlocksX;
@@ -16,16 +17,6 @@ struct GtcParams {
     float Pad0;
     float Pad1;
 };
-
-[[vk::push_constant]] GtcParams Params;
-
-// Convenience accessors (so shaders can use short names)
-#define TexWidth   Params.TexWidth
-#define TexHeight  Params.TexHeight
-#define BlocksX    Params.BlocksX
-#define BlocksY    Params.BlocksY
-#define QualityLevel Params.QualityLevel
-#define Flags      Params.Flags
 
 // Flag bits
 #define GTC_FLAG_NORMALMAP  (1 << 0)

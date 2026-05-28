@@ -114,26 +114,30 @@ CompiledShader ShaderCompiler::compile_compute(
     // dxc -T cs_6_0 -E MainCS -spirv -I <include_dir> [-D defines...] -Fo output.spv input.hlsl
     // On Windows, _popen needs cmd /c wrapping when paths have spaces
     //
-    // SDL3 GPU Vulkan backend resource mapping:
-    //   Samplers: descriptor set 0, bindings [0..num_samplers-1]
-    //   RW storage buffers: descriptor set 0, bindings [num_samplers..+num_rw_buf-1]
-    //   Uniform data: push constants (via SDL_PushGPUComputeUniformData)
+    // SDL3 GPU Vulkan backend uses MULTIPLE descriptor sets for compute:
+    //   Set 0: Read-only resources (samplers, readonly storage textures, readonly storage buffers)
+    //   Set 1: Read-write resources (RW storage textures, RW storage buffers)
+    //   Set 2: Uniform buffers
     //
-    // Our shader interface uses [[vk::push_constant]] for the cbuffer,
-    // so it becomes a Vulkan push constant (no descriptor binding needed).
+    // Within each set, bindings start from 0:
+    //   Set 0, Binding 0: combined image/sampler (SourceTexture + PointSampler)
+    //   Set 1, Binding 0: RW storage buffer (OutputBlocks)
+    //   Set 2, Binding 0: uniform buffer (GtcParams / CompressParams)
     //
-    // Resource mapping:
-    //   register(t0) + register(s0) -> binding 0 (combined sampler)
-    //   register(u0) -> binding 1 (RW storage buffer)
-    //   cbuffer [[vk::push_constant]] -> push constant (no binding)
+    // DXC -fvk-bind-register maps HLSL registers to specific (binding, set) pairs:
+    //   register(t0) space0 → binding 0, set 0
+    //   register(s0) space0 → binding 0, set 0 (combined)
+    //   register(u0) space0 → binding 0, set 1
+    //   register(b0) space0 → binding 0, set 2
     std::string inner_cmd = "\"" + dxc_path + "\"";
     inner_cmd += " -T cs_6_0";
     inner_cmd += " -E " + entry_point;
     inner_cmd += " -spirv";
     inner_cmd += " -fspv-target-env=vulkan1.1";
-    inner_cmd += " -fvk-t-shift 0 0";
-    inner_cmd += " -fvk-s-shift 0 0";
-    inner_cmd += " -fvk-u-shift 1 0";
+    inner_cmd += " -fvk-bind-register t0 0 0 0";  // t0 space0 → binding 0, set 0
+    inner_cmd += " -fvk-bind-register s0 0 0 0";  // s0 space0 → binding 0, set 0
+    inner_cmd += " -fvk-bind-register u0 0 0 1";  // u0 space0 → binding 0, set 1
+    inner_cmd += " -fvk-bind-register b0 0 0 2";  // b0 space0 → binding 0, set 2
     inner_cmd += " -I \"" + include_dir + "\"";
 
     // Add defines

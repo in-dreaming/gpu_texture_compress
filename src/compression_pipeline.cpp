@@ -29,7 +29,8 @@ bool CompressionPipeline::prepare_format(GtcFormat format) {
     // Resource binding layout:
     // - 1 texture sampler (SourceTexture + PointSampler) at binding 0
     // - 1 readwrite storage buffer (OutputBlocks) at binding 1
-    // - Uniform data via push constants (not a descriptor binding)
+    // - Push constants for uniform data (num_uniform_buffers tells SDL3 to
+    //   allocate push constant space; it's NOT a descriptor binding)
     SDL_GPUComputePipeline* pipeline = dispatch_.create_pipeline(
         shader,
         /*num_samplers=*/1,
