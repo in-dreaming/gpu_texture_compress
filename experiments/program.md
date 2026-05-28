@@ -9,6 +9,27 @@ compression time under the budget.**
 The final deliverable is a set of shader files in `sdk/shaders/` that form a
 standalone Shader SDK — independent of any specific engine or graphics API.
 
+## Per-Format Research Programs
+
+Each format has its own detailed program with specific strategies:
+- `experiments/programs/bc1.md` — BC1 (RGB 4bpp)
+- `experiments/programs/bc3.md` — BC3 (RGBA 8bpp = BC1+BC4)
+- `experiments/programs/bc4.md` — BC4 (R 4bpp, single channel)
+- `experiments/programs/bc5.md` — BC5 (RG 8bpp = 2×BC4, normal maps)
+- `experiments/programs/bc6h.md` — BC6H (HDR RGB 8bpp, 14 modes)
+- `experiments/programs/bc7.md` — BC7 (RGBA 8bpp, 8 modes)
+- `experiments/programs/astc.md` — ASTC (14 block sizes, 0.89-8.00 bpp)
+
+**Read the relevant program file before starting work on that format.**
+
+## Reference Source Code (deps/)
+
+| Directory | Description | Key Files |
+|-----------|-------------|-----------|
+| `deps/astc_encoder/` | GPU ASTC 4x4/6x6 (D3D11 compute shader) | `ASTC_Encode.hlsl`, `ASTC_Table.hlsl`, `ASTC_IntegerSequenceEncoding.hlsl` |
+| `deps/astc-encoder/` | ARM official ASTC encoder (CPU, all modes) | `Source/astcenc_compress_symbolic.cpp` |
+| `deps/DirectXTex/` | Microsoft BCn reference (CPU) | `DirectXTexCompressBC.cpp`, `BC7Encode.cpp`, `BC6HEncode.cpp` |
+
 ## Working Directory
 
 Project root: the git repository root.

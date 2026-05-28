@@ -1,8 +1,6 @@
 // ASTC 8x8 Compute Shader Dispatch
-#define ASTC_BLOCK_W 8
-#define ASTC_BLOCK_H 8
 #include "common/gtc_interface.hlsl"
-#include "compress/astc.hlsl"
+#include "compress/astc_8x8.hlsl"
 
 RWStructuredBuffer<uint4> OutputBlocks : register(u0);
 
@@ -10,14 +8,14 @@ RWStructuredBuffer<uint4> OutputBlocks : register(u0);
 void MainCS(uint3 DTid : SV_DispatchThreadID) {
     if (DTid.x >= (uint)BlocksX || DTid.y >= (uint)BlocksY) return;
 
-    float4 pixels[ASTC_BLOCK_W * ASTC_BLOCK_H];
-    [unroll] for (int py = 0; py < ASTC_BLOCK_H; py++)
-        [unroll] for (int px = 0; px < ASTC_BLOCK_W; px++) {
-            int2 coord = int2(DTid.x * ASTC_BLOCK_W + px, DTid.y * ASTC_BLOCK_H + py);
+    float4 pixels[64];
+    [unroll] for (int py = 0; py < 8; py++)
+        [unroll] for (int px = 0; px < 8; px++) {
+            int2 coord = int2((int)DTid.x * 8 + px, (int)DTid.y * 8 + py);
             coord = min(coord, int2(TexWidth - 1, TexHeight - 1));
-            pixels[py * ASTC_BLOCK_W + px] = SourceTexture.Load(int3(coord, 0));
+            pixels[py * 8 + px] = SourceTexture.Load(int3(coord, 0));
         }
 
     uint blockIndex = DTid.y * BlocksX + DTid.x;
-    OutputBlocks[blockIndex] = compress_astc(pixels, ASTC_BLOCK_W * ASTC_BLOCK_H);
+    OutputBlocks[blockIndex] = compress_astc_8x8(pixels);
 }
