@@ -76,6 +76,65 @@ uint BC6H_UnquantizeF16(uint q) {
     return ((q << 16) + 0x8000) >> 10;  // (q << 6) + 32 in fractional form
 }
 
+// LSQ-fit endpoints to current index assignments
+// Given fixed indices, solve for best endpoints using least-squares
+void BC6H_LSQFitEndpoints(float3 pixels[16], uint indices[16], out float3 endpoint0, out float3 endpoint1) {
+    // Compute weights: w0[i] = (64 - aWeight4[idx[i]]) / 64.0, w1[i] = aWeight4[idx[i]] / 64.0
+    float w0[16];
+    float w1[16];
+    [unroll] for (int i = 0; i < 16; i++) {
+        uint w1_int = aWeight4[indices[i]];
+        float w1_f = (float)w1_int / 64.0;
+        w1[i] = w1_f;
+        w0[i] = 1.0 - w1_f;
+    }
+
+    // Accumulate matrix and vector for each channel
+    float A00 = 0, A01 = 0, A11 = 0;
+    [unroll] for (int i = 0; i < 16; i++) {
+        A00 += w0[i] * w0[i];
+        A01 += w0[i] * w1[i];
+        A11 += w1[i] * w1[i];
+    }
+
+    // Solve per-channel using 2x2 inverse
+    endpoint0 = float3(0, 0, 0);
+    endpoint1 = float3(0, 0, 0);
+
+    float det = A00 * A11 - A01 * A01;
+    if (det < 0.00001) {
+        // Singular: return midpoint
+        float3 sum = float3(0, 0, 0);
+        [unroll] for (int i = 0; i < 16; i++) sum += pixels[i];
+        endpoint0 = sum / 16.0;
+        endpoint1 = sum / 16.0;
+        return;
+    }
+
+    [unroll] for (int ch = 0; ch < 3; ch++) {
+        float b0 = 0, b1 = 0;
+        [unroll] for (int i = 0; i < 16; i++) {
+            float pix = (ch == 0) ? pixels[i].x : (ch == 1) ? pixels[i].y : pixels[i].z;
+            b0 += w0[i] * pix;
+            b1 += w1[i] * pix;
+        }
+
+        float ep0 = (b0 * A11 - b1 * A01) / det;
+        float ep1 = (b1 * A00 - b0 * A01) / det;
+
+        if (ch == 0) {
+            endpoint0.x = ep0;
+            endpoint1.x = ep1;
+        } else if (ch == 1) {
+            endpoint0.y = ep0;
+            endpoint1.y = ep1;
+        } else {
+            endpoint0.z = ep0;
+            endpoint1.z = ep1;
+        }
+    }
+}
+
 // Compress a 4x4 block of HDR RGB pixels into BC6H (Mode 11)
 uint4 compress_bc6h(float3 pixels[16]) {
     // Compute mean
@@ -169,6 +228,85 @@ uint4 compress_bc6h(float3 pixels[16]) {
             }
         }
         indices[qi] = bestIdx;
+    }
+
+    // Iterative LSQ endpoint refinement (2 iterations for quality)
+    [unroll] for (int iter = 0; iter < 2; iter++) {
+        // Fit new endpoints using LSQ
+        float3 lsq_ep0, lsq_ep1;
+        BC6H_LSQFitEndpoints(pixels, indices, lsq_ep0, lsq_ep1);
+
+        // Apply endpoint inset to reduce quantization boundary overshoot
+        float3 center = (lsq_ep0 + lsq_ep1) * 0.5;
+        float inset = 1.0 / 16.0;  // for 16-entry palette
+        lsq_ep0 = lsq_ep0 + (center - lsq_ep0) * inset;
+        lsq_ep1 = lsq_ep1 + (center - lsq_ep1) * inset;
+
+        // Clamp to non-negative for unsigned BC6H
+        lsq_ep0 = max(lsq_ep0, float3(0, 0, 0));
+        lsq_ep1 = max(lsq_ep1, float3(0, 0, 0));
+
+        // Re-quantize endpoints to 10-bit F16 space
+        uint3 new_ep0 = uint3(
+            min((uint)(f32tof16(lsq_ep0.x)) / 31u, 1023u),
+            min((uint)(f32tof16(lsq_ep0.y)) / 31u, 1023u),
+            min((uint)(f32tof16(lsq_ep0.z)) / 31u, 1023u)
+        );
+        uint3 new_ep1 = uint3(
+            min((uint)(f32tof16(lsq_ep1.x)) / 31u, 1023u),
+            min((uint)(f32tof16(lsq_ep1.y)) / 31u, 1023u),
+            min((uint)(f32tof16(lsq_ep1.z)) / 31u, 1023u)
+        );
+
+        // Unquantize back to F16 bits for palette generation
+        uint3 new_f16_ep0 = uint3(
+            BC6H_UnquantizeF16(new_ep0.x),
+            BC6H_UnquantizeF16(new_ep0.y),
+            BC6H_UnquantizeF16(new_ep0.z)
+        );
+        uint3 new_f16_ep1 = uint3(
+            BC6H_UnquantizeF16(new_ep1.x),
+            BC6H_UnquantizeF16(new_ep1.y),
+            BC6H_UnquantizeF16(new_ep1.z)
+        );
+
+        // Scale F16 values back
+        new_f16_ep0 = (new_f16_ep0 * 31u) >> 6;
+        new_f16_ep1 = (new_f16_ep1 * 31u) >> 6;
+
+        // Rebuild palette with new endpoints
+        float3 new_palette[16];
+        [unroll] for (int p = 0; p < 16; p++) {
+            uint w1_val = aWeight4[p];
+            uint w0_val = 64u - w1_val;
+
+            uint new_f16_p_r = (new_f16_ep0.x * w0_val + new_f16_ep1.x * w1_val + 32) >> 6;
+            uint new_f16_p_g = (new_f16_ep0.y * w0_val + new_f16_ep1.y * w1_val + 32) >> 6;
+            uint new_f16_p_b = (new_f16_ep0.z * w0_val + new_f16_ep1.z * w1_val + 32) >> 6;
+
+            new_palette[p].x = f16tof32(new_f16_p_r);
+            new_palette[p].y = f16tof32(new_f16_p_g);
+            new_palette[p].z = f16tof32(new_f16_p_b);
+        }
+
+        // Re-assign indices with new palette
+        [unroll] for (int qi = 0; qi < 16; qi++) {
+            float bestDist = 1e10;
+            uint bestIdx = 0;
+            [unroll] for (int j = 0; j < 16; j++) {
+                float3 diff = pixels[qi] - new_palette[j];
+                float dist = dot(diff, diff);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    bestIdx = (uint)j;
+                }
+            }
+            indices[qi] = bestIdx;
+        }
+
+        // Update endpoints for next iteration (or final packing)
+        ep0 = new_ep0;
+        ep1 = new_ep1;
     }
 
     // Anchor bit handling: if anchor (index 0) MSB set, flip indices and swap endpoints
