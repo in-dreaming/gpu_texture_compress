@@ -1,0 +1,10 @@
+{
+    "name": "astc_block_size_analysis",
+    "formats": ["ASTC_4x4", "ASTC_5x4", "ASTC_5x5", "ASTC_6x5", "ASTC_6x6", "ASTC_8x5", "ASTC_8x6", "ASTC_8x8"],
+    "textures": [
+        "src_texture/Images/Khronos/LDR-RGB/ldr-rgb-diffuse.png"
+    ],
+    "quality_level": 1,
+    "warmup_runs": 0,
+    "measurement_runs": 1
+}

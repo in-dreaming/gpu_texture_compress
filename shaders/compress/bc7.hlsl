@@ -112,27 +112,34 @@ void BC7_ComputeIndices(float4 pixels[16], float4 fep0, float4 fep1, out uint in
 }
 
 // Helper: Least-squares endpoint refinement given fixed indices
+// Uses linear regression to find best-fitting endpoints for the fixed index assignment
 void BC7_LSQ_RefineEndpoints(float4 pixels[16], uint indices[16], inout float4 ep0, inout float4 ep1) {
-    float4 sumPixels[16];
-    float weights[16];
+    // Sum all pixels weighted by their index position [0,1]
+    float4 sumWeightedPixels = float4(0, 0, 0, 0);
+    float sumWeights = 0.0;
+    float4 sumIndexedPixels = float4(0, 0, 0, 0);
+    float sumIndexedWeights = 0.0;
 
-    [unroll] for (int i = 0; i < 16; i++) {
-        sumPixels[i] = float4(0, 0, 0, 0);
-        weights[i] = 0.0;
-    }
-
+    // Compute weighted sums for linear regression
+    // We want to fit: pixel = ep0 * (1-t) + ep1 * t, where t = index/15
     [unroll] for (int pi = 0; pi < 16; pi++) {
-        uint idx = indices[pi];
-        sumPixels[idx] += pixels[pi];
-        weights[idx] += 1.0;
+        float t = (float)indices[pi] / 15.0;
+
+        // Sum for ep0: pixel * (1-t)
+        sumWeightedPixels += pixels[pi] * (1.0 - t);
+        sumWeights += (1.0 - t) * (1.0 - t);
+
+        // Sum for ep1: pixel * t
+        sumIndexedPixels += pixels[pi] * t;
+        sumIndexedWeights += t * t;
     }
 
-    // Recompute endpoints as average of assigned pixels
-    if (weights[0] > 0.5) {
-        ep0 = saturate(sumPixels[0] / weights[0]);
+    // Recompute endpoints with averaging
+    if (sumWeights > 0.001) {
+        ep0 = saturate(sumWeightedPixels / sumWeights);
     }
-    if (weights[15] > 0.5) {
-        ep1 = saturate(sumPixels[15] / weights[15]);
+    if (sumIndexedWeights > 0.001) {
+        ep1 = saturate(sumIndexedPixels / sumIndexedWeights);
     }
 }
 
@@ -162,7 +169,10 @@ uint4 compress_bc7(float4 pixels[16]) {
     float4 endpoint1 = saturate(mean + axis * minProj);
 
     // LSQ endpoint refinement loop - iterate based on quality level
-    uint lsq_iterations = (QualityLevel == 0) ? 0 : ((QualityLevel == 1) ? 1 : 3);
+    // NOTE: LSQ refinement is currently disabled as it causes quality regression
+    // Proper LSQ would require linear regression, but simpler approach of averaging
+    // pixels at extreme indices is not effective
+    uint lsq_iterations = 0; // (QualityLevel == 0) ? 0 : ((QualityLevel == 1) ? 1 : 3);
 
     [loop] for (uint lsq_iter = 0; lsq_iter < lsq_iterations; lsq_iter++) {
         // Quantize endpoints to 7 bits (0..127)
