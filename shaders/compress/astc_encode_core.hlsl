@@ -529,11 +529,11 @@ uint4 encode_block(float4 texels[BLOCK_SIZE])
 			best_blockmode = uint4(QUANT_6, QUANT_256, 6, 7);
 		}
 	#else
-		// 6x6 RGB: level 1 is standard
+		// 6x6 RGB: use higher weight precision for better mapping to 36 pixels
 		if (QualityLevel >= 2) {
-			best_blockmode = uint4(QUANT_12, QUANT_256, 12, 7);
+			best_blockmode = uint4(QUANT_16, QUANT_256, 16, 7);
 		} else if (QualityLevel == 1) {
-			best_blockmode = uint4(QUANT_12, QUANT_256, 12, 7);
+			best_blockmode = uint4(QUANT_16, QUANT_256, 16, 7);
 		} else {
 			best_blockmode = uint4(QUANT_12, QUANT_256, 12, 7);
 		}
