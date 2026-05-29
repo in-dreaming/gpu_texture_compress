@@ -430,7 +430,7 @@ uint4 assemble_block(uint blockmode, uint color_endpoint_mode, uint partition_co
 
 	// endpoints start from ( multi_part ? bits 29 : bits 17 )
 	phy_blk.x |= (ep_ise.x & 0x7FFF) << 17;
-	phy_blk.y = ((ep_ise.x >> 15) & 0x1FFFF);
+	phy_blk.y |= ((ep_ise.x >> 15) & 0x1FFFF);
 	phy_blk.y |= (ep_ise.y & 0x7FFF) << 17;
 	phy_blk.z |= ((ep_ise.y >> 15) & 0x1FFFF);
 
