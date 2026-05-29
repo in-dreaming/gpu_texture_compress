@@ -1,0 +1,10 @@
+{
+    "name": "bc5_normal_map",
+    "formats": ["BC5"],
+    "textures": [
+        "src_texture/Images/Small/LDR-RGB/ldr-rgb-00.png"
+    ],
+    "quality_level": 1,
+    "warmup_runs": 0,
+    "measurement_runs": 3
+}
