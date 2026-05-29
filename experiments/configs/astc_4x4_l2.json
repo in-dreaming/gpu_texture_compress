@@ -1,0 +1,10 @@
+{
+    "name": "astc_4x4_quality_level_2",
+    "formats": ["ASTC_4x4"],
+    "textures": [
+        "src_texture/Images/Khronos/LDR-RGB/ldr-rgb-diffuse.png"
+    ],
+    "quality_level": 2,
+    "warmup_runs": 0,
+    "measurement_runs": 1
+}
