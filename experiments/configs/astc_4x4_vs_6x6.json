@@ -1,0 +1,12 @@
+{
+    "name": "astc_6x6_vs_4x4_comparison",
+    "formats": ["ASTC_4x4", "ASTC_6x6"],
+    "textures": [
+        "src_texture/Images/Khronos/LDR-RGB/ldr-rgb-diffuse.png",
+        "src_texture/Images/Khronos/LDR-RGB/ldr-rgb-emissive.png",
+        "src_texture/Images/Khronos/LDR-RGB/ldr-rgb-metalrough.png"
+    ],
+    "quality_level": 1,
+    "warmup_runs": 0,
+    "measurement_runs": 1
+}

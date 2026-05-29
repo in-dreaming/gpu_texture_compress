@@ -1,0 +1,205 @@
+=== GPU Device Info ===
+  Driver:   vulkan
+  Compute:  supported
+=======================
+[main] Loading config: experiments/configs/astc_all_block_sizes.json
+[ExperimentRunner] Config 'astc_block_size_analysis': 8 formats, 1 textures, quality=1
+
+=== Starting Experiment: astc_block_size_analysis ===
+
+[Pipeline] Compiling shader for ASTC_4x4: shaders/dispatch/astc_4x4_cs.hlsl
+[ShaderCompiler] Running: cmd /c ""C:\VulkanSDK\1.4.328.1/Bin/dxc.exe" -T cs_6_0 -E MainCS -spirv -fspv-target-env=vulkan1.1 -fvk-bind-register t0 0 0 0 -fvk-bind-register s0 0 0 0 -fvk-bind-register u0 0 0 1 -fvk-bind-register b0 0 0 2 -I "shaders" -Fo "shaders/dispatch/astc_4x4_cs.hlsl.spv" "shaders/dispatch/astc_4x4_cs.hlsl" 2>&1"
+[ShaderCompiler] DXC warnings: In file included from shaders/dispatch/astc_4x4_cs.hlsl:3:
+In file included from ./shaders\compress/astc_4x4.hlsl:10:
+In file included from ./shaders\compress/astc_encode_core.hlsl:76:
+./shaders\compress/astc_ise.hlsl:123:28: warning: ambiguous type for bit shift; use a type suffix on literal values, like 'L' or 'U', or a cast [-Wambig-lit-shift]
+        uint low_mask = (uint)((1 << i) - 1);
+                                  ^
+
+
+[ShaderCompiler] Compiled: shaders/dispatch/astc_4x4_cs.hlsl -> 104112 bytes SPIRV
+[Pipeline] Ready: ASTC_4x4
+[Pipeline] Compiling shader for ASTC_5x4: shaders/dispatch/astc_5x4_cs.hlsl
+[ShaderCompiler] Running: cmd /c ""C:\VulkanSDK\1.4.328.1/Bin/dxc.exe" -T cs_6_0 -E MainCS -spirv -fspv-target-env=vulkan1.1 -fvk-bind-register t0 0 0 0 -fvk-bind-register s0 0 0 0 -fvk-bind-register u0 0 0 1 -fvk-bind-register b0 0 0 2 -I "shaders" -Fo "shaders/dispatch/astc_5x4_cs.hlsl.spv" "shaders/dispatch/astc_5x4_cs.hlsl" 2>&1"
+[ShaderCompiler] Compiled: shaders/dispatch/astc_5x4_cs.hlsl -> 14452 bytes SPIRV
+[Pipeline] Ready: ASTC_5x4
+[Pipeline] Compiling shader for ASTC_5x5: shaders/dispatch/astc_5x5_cs.hlsl
+[ShaderCompiler] Running: cmd /c ""C:\VulkanSDK\1.4.328.1/Bin/dxc.exe" -T cs_6_0 -E MainCS -spirv -fspv-target-env=vulkan1.1 -fvk-bind-register t0 0 0 0 -fvk-bind-register s0 0 0 0 -fvk-bind-register u0 0 0 1 -fvk-bind-register b0 0 0 2 -I "shaders" -Fo "shaders/dispatch/astc_5x5_cs.hlsl.spv" "shaders/dispatch/astc_5x5_cs.hlsl" 2>&1"
+[ShaderCompiler] Compiled: shaders/dispatch/astc_5x5_cs.hlsl -> 15428 bytes SPIRV
+[Pipeline] Ready: ASTC_5x5
+[Pipeline] Compiling shader for ASTC_6x5: shaders/dispatch/astc_6x5_cs.hlsl
+[ShaderCompiler] Running: cmd /c ""C:\VulkanSDK\1.4.328.1/Bin/dxc.exe" -T cs_6_0 -E MainCS -spirv -fspv-target-env=vulkan1.1 -fvk-bind-register t0 0 0 0 -fvk-bind-register s0 0 0 0 -fvk-bind-register u0 0 0 1 -fvk-bind-register b0 0 0 2 -I "shaders" -Fo "shaders/dispatch/astc_6x5_cs.hlsl.spv" "shaders/dispatch/astc_6x5_cs.hlsl" 2>&1"
+[ShaderCompiler] Compiled: shaders/dispatch/astc_6x5_cs.hlsl -> 16420 bytes SPIRV
+[Pipeline] Ready: ASTC_6x5
+[Pipeline] Compiling shader for ASTC_6x6: shaders/dispatch/astc_6x6_cs.hlsl
+[ShaderCompiler] Running: cmd /c ""C:\VulkanSDK\1.4.328.1/Bin/dxc.exe" -T cs_6_0 -E MainCS -spirv -fspv-target-env=vulkan1.1 -fvk-bind-register t0 0 0 0 -fvk-bind-register s0 0 0 0 -fvk-bind-register u0 0 0 1 -fvk-bind-register b0 0 0 2 -I "shaders" -Fo "shaders/dispatch/astc_6x6_cs.hlsl.spv" "shaders/dispatch/astc_6x6_cs.hlsl" 2>&1"
+[ShaderCompiler] DXC warnings: In file included from shaders/dispatch/astc_6x6_cs.hlsl:3:
+In file included from ./shaders\compress/astc_6x6.hlsl:10:
+In file included from ./shaders\compress/astc_encode_core.hlsl:76:
+./shaders\compress/astc_ise.hlsl:123:28: warning: ambiguous type for bit shift; use a type suffix on literal values, like 'L' or 'U', or a cast [-Wambig-lit-shift]
+        uint low_mask = (uint)((1 << i) - 1);
+                                  ^
+
+
+[ShaderCompiler] Compiled: shaders/dispatch/astc_6x6_cs.hlsl -> 47164 bytes SPIRV
+[Pipeline] Ready: ASTC_6x6
+[Pipeline] Compiling shader for ASTC_8x5: shaders/dispatch/astc_8x5_cs.hlsl
+[ShaderCompiler] Running: cmd /c ""C:\VulkanSDK\1.4.328.1/Bin/dxc.exe" -T cs_6_0 -E MainCS -spirv -fspv-target-env=vulkan1.1 -fvk-bind-register t0 0 0 0 -fvk-bind-register s0 0 0 0 -fvk-bind-register u0 0 0 1 -fvk-bind-register b0 0 0 2 -I "shaders" -Fo "shaders/dispatch/astc_8x5_cs.hlsl.spv" "shaders/dispatch/astc_8x5_cs.hlsl" 2>&1"
+[ShaderCompiler] Compiled: shaders/dispatch/astc_8x5_cs.hlsl -> 18420 bytes SPIRV
+[Pipeline] Ready: ASTC_8x5
+[Pipeline] Compiling shader for ASTC_8x6: shaders/dispatch/astc_8x6_cs.hlsl
+[ShaderCompiler] Running: cmd /c ""C:\VulkanSDK\1.4.328.1/Bin/dxc.exe" -T cs_6_0 -E MainCS -spirv -fspv-target-env=vulkan1.1 -fvk-bind-register t0 0 0 0 -fvk-bind-register s0 0 0 0 -fvk-bind-register u0 0 0 1 -fvk-bind-register b0 0 0 2 -I "shaders" -Fo "shaders/dispatch/astc_8x6_cs.hlsl.spv" "shaders/dispatch/astc_8x6_cs.hlsl" 2>&1"
+[ShaderCompiler] Compiled: shaders/dispatch/astc_8x6_cs.hlsl -> 19960 bytes SPIRV
+[Pipeline] Ready: ASTC_8x6
+[Pipeline] Compiling shader for ASTC_8x8: shaders/dispatch/astc_8x8_cs.hlsl
+[ShaderCompiler] Running: cmd /c ""C:\VulkanSDK\1.4.328.1/Bin/dxc.exe" -T cs_6_0 -E MainCS -spirv -fspv-target-env=vulkan1.1 -fvk-bind-register t0 0 0 0 -fvk-bind-register s0 0 0 0 -fvk-bind-register u0 0 0 1 -fvk-bind-register b0 0 0 2 -I "shaders" -Fo "shaders/dispatch/astc_8x8_cs.hlsl.spv" "shaders/dispatch/astc_8x8_cs.hlsl" 2>&1"
+[ShaderCompiler] Compiled: shaders/dispatch/astc_8x8_cs.hlsl -> 23040 bytes SPIRV
+[Pipeline] Ready: ASTC_8x8
+[ExperimentRunner] Loaded 1 textures
+
+=== Experiment: astc_block_size_analysis ===
+total_time_seconds: 6.1
+status: ok
+
+---
+format:          ASTC_4x4
+avg_psnr:        49.6169
+avg_ssim:        0.9988
+avg_flip:        0.0011
+avg_lpips:       0.0046
+avg_time_ms:     1.11
+num_textures:    1
+---
+
+---
+format:          ASTC_5x4
+avg_psnr:        19.7189
+avg_ssim:        0.5015
+avg_flip:        0.0458
+avg_lpips:       0.1335
+avg_time_ms:     0.63
+num_textures:    1
+---
+
+---
+format:          ASTC_5x5
+avg_psnr:        19.9075
+avg_ssim:        0.4903
+avg_flip:        0.0454
+avg_lpips:       0.1298
+avg_time_ms:     0.27
+num_textures:    1
+---
+
+---
+format:          ASTC_6x5
+avg_psnr:        20.1425
+avg_ssim:        0.5067
+avg_flip:        0.0442
+avg_lpips:       0.1237
+avg_time_ms:     0.69
+num_textures:    1
+---
+
+---
+format:          ASTC_6x6
+avg_psnr:        25.9655
+avg_ssim:        0.6999
+avg_flip:        0.0223
+avg_lpips:       0.0965
+avg_time_ms:     4.70
+num_textures:    1
+---
+
+---
+format:          ASTC_8x5
+avg_psnr:        21.5468
+avg_ssim:        0.6627
+avg_flip:        0.0331
+avg_lpips:       0.0844
+avg_time_ms:     3.94
+num_textures:    1
+---
+
+---
+format:          ASTC_8x6
+avg_psnr:        12.3542
+avg_ssim:        0.0028
+avg_flip:        0.1842
+avg_lpips:       0.0622
+avg_time_ms:     3.86
+num_textures:    1
+---
+
+---
+format:          ASTC_8x8
+avg_psnr:        23.2733
+avg_ssim:        0.7712
+avg_flip:        0.0257
+avg_lpips:       0.0587
+avg_time_ms:     7.82
+num_textures:    1
+---
+[ResultsLogger] Logged to experiments/results/astc_block_size_analysis.tsv
+[Results] Logged to: experiments/results/astc_block_size_analysis.tsv
+Validation Error: [ VUID-vkDestroyDevice-device-05137 ] | MessageID = 0x4872eaa0
+vkDestroyDevice(): Object Tracking - For VkDevice 0x1bc363fcd60, VkShaderModule 0x2a000000002a has not been destroyed.
+The Vulkan spec states: All child objects created on device that can be destroyed or freed must have been destroyed or freed prior to destroying device (https://vulkan.lunarg.com/doc/view/1.4.328.1/windows/antora/spec/latest/chapters/devsandqueues.html#VUID-vkDestroyDevice-device-05137)
+Objects: 1
+    [0] VkShaderModule 0x2a000000002a
+
+Validation Error: [ VUID-vkDestroyDevice-device-05137 ] | MessageID = 0x4872eaa0
+vkDestroyDevice(): Object Tracking - For VkDevice 0x1bc363fcd60, VkShaderModule 0x280000000028 has not been destroyed.
+The Vulkan spec states: All child objects created on device that can be destroyed or freed must have been destroyed or freed prior to destroying device (https://vulkan.lunarg.com/doc/view/1.4.328.1/windows/antora/spec/latest/chapters/devsandqueues.html#VUID-vkDestroyDevice-device-05137)
+Objects: 1
+    [0] VkShaderModule 0x280000000028
+
+Validation Error: [ VUID-vkDestroyDevice-device-05137 ] | MessageID = 0x4872eaa0
+vkDestroyDevice(): Object Tracking - For VkDevice 0x1bc363fcd60, VkShaderModule 0x2e000000002e has not been destroyed.
+The Vulkan spec states: All child objects created on device that can be destroyed or freed must have been destroyed or freed prior to destroying device (https://vulkan.lunarg.com/doc/view/1.4.328.1/windows/antora/spec/latest/chapters/devsandqueues.html#VUID-vkDestroyDevice-device-05137)
+Objects: 1
+    [0] VkShaderModule 0x2e000000002e
+
+Validation Error: [ VUID-vkDestroyDevice-device-05137 ] | MessageID = 0x4872eaa0
+vkDestroyDevice(): Object Tracking - For VkDevice 0x1bc363fcd60, VkShaderModule 0x2c000000002c has not been destroyed.
+The Vulkan spec states: All child objects created on device that can be destroyed or freed must have been destroyed or freed prior to destroying device (https://vulkan.lunarg.com/doc/view/1.4.328.1/windows/antora/spec/latest/chapters/devsandqueues.html#VUID-vkDestroyDevice-device-05137)
+Objects: 1
+    [0] VkShaderModule 0x2c000000002c
+
+Validation Error: [ VUID-vkDestroyDevice-device-05137 ] | MessageID = 0x4872eaa0
+vkDestroyDevice(): Object Tracking - For VkDevice 0x1bc363fcd60, VkShaderModule 0x340000000034 has not been destroyed.
+The Vulkan spec states: All child objects created on device that can be destroyed or freed must have been destroyed or freed prior to destroying device (https://vulkan.lunarg.com/doc/view/1.4.328.1/windows/antora/spec/latest/chapters/devsandqueues.html#VUID-vkDestroyDevice-device-05137)
+Objects: 1
+    [0] VkShaderModule 0x340000000034
+
+Validation Error: [ VUID-vkDestroyDevice-device-05137 ] | MessageID = 0x4872eaa0
+vkDestroyDevice(): Object Tracking - For VkDevice 0x1bc363fcd60, VkShaderModule 0x220000000022 has not been destroyed.
+The Vulkan spec states: All child objects created on device that can be destroyed or freed must have been destroyed or freed prior to destroying device (https://vulkan.lunarg.com/doc/view/1.4.328.1/windows/antora/spec/latest/chapters/devsandqueues.html#VUID-vkDestroyDevice-device-05137)
+Objects: 1
+    [0] VkShaderModule 0x220000000022
+
+Validation Error: [ VUID-vkDestroyDevice-device-05137 ] | MessageID = 0x4872eaa0
+vkDestroyDevice(): Object Tracking - For VkDevice 0x1bc363fcd60, VkShaderModule 0x300000000030 has not been destroyed.
+The Vulkan spec states: All child objects created on device that can be destroyed or freed must have been destroyed or freed prior to destroying device (https://vulkan.lunarg.com/doc/view/1.4.328.1/windows/antora/spec/latest/chapters/devsandqueues.html#VUID-vkDestroyDevice-device-05137)
+Objects: 1
+    [0] VkShaderModule 0x300000000030
+
+Validation Error: [ VUID-vkDestroyDevice-device-05137 ] | MessageID = 0x4872eaa0
+vkDestroyDevice(): Object Tracking - For VkDevice 0x1bc363fcd60, VkShaderModule 0x320000000032 has not been destroyed.
+The Vulkan spec states: All child objects created on device that can be destroyed or freed must have been destroyed or freed prior to destroying device (https://vulkan.lunarg.com/doc/view/1.4.328.1/windows/antora/spec/latest/chapters/devsandqueues.html#VUID-vkDestroyDevice-device-05137)
+Objects: 1
+    [0] VkShaderModule 0x320000000032
+
+Validation Error: [ VUID-vkDestroyDevice-device-05137 ] | MessageID = 0x4872eaa0
+vkDestroyDevice(): Object Tracking - For VkDevice 0x1bc363fcd60, VkPipeline 0x2b000000002b has not been destroyed.
+The Vulkan spec states: All child objects created on device that can be destroyed or freed must have been destroyed or freed prior to destroying device (https://vulkan.lunarg.com/doc/view/1.4.328.1/windows/antora/spec/latest/chapters/devsandqueues.html#VUID-vkDestroyDevice-device-05137)
+Objects: 1
+    [0] VkPipeline 0x2b000000002b
+
+Validation Error: [ VUID-vkDestroyDevice-device-05137 ] | MessageID = 0x4872eaa0
+(Warning - This VUID has now been reported 10 times, which is the duplicate_message_limit value, this will be the last time reporting it).
+vkDestroyDevice(): Object Tracking - For VkDevice 0x1bc363fcd60, VkPipeline 0x290000000029 has not been destroyed.
+The Vulkan spec states: All child objects created on device that can be destroyed or freed must have been destroyed or freed prior to destroying device (https://vulkan.lunarg.com/doc/view/1.4.328.1/windows/antora/spec/latest/chapters/devsandqueues.html#VUID-vkDestroyDevice-device-05137)
+Objects: 1
+    [0] VkPipeline 0x290000000029
+

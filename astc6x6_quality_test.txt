@@ -1,0 +1,50 @@
+=== GPU Device Info ===
+  Driver:   vulkan
+  Compute:  supported
+=======================
+[main] Loading config: experiments/configs/astc_6x6_quality_levels.json
+[ExperimentRunner] Config 'astc_6x6_quality_levels_test': 1 formats, 1 textures, quality=2
+
+=== Starting Experiment: astc_6x6_quality_levels_test ===
+
+[Pipeline] Compiling shader for ASTC_6x6: shaders/dispatch/astc_6x6_cs.hlsl
+[ShaderCompiler] Running: cmd /c ""C:\VulkanSDK\1.4.328.1/Bin/dxc.exe" -T cs_6_0 -E MainCS -spirv -fspv-target-env=vulkan1.1 -fvk-bind-register t0 0 0 0 -fvk-bind-register s0 0 0 0 -fvk-bind-register u0 0 0 1 -fvk-bind-register b0 0 0 2 -I "shaders" -Fo "shaders/dispatch/astc_6x6_cs.hlsl.spv" "shaders/dispatch/astc_6x6_cs.hlsl" 2>&1"
+[ShaderCompiler] DXC warnings: In file included from shaders/dispatch/astc_6x6_cs.hlsl:3:
+In file included from ./shaders\compress/astc_6x6.hlsl:10:
+In file included from ./shaders\compress/astc_encode_core.hlsl:76:
+./shaders\compress/astc_ise.hlsl:123:28: warning: ambiguous type for bit shift; use a type suffix on literal values, like 'L' or 'U', or a cast [-Wambig-lit-shift]
+        uint low_mask = (uint)((1 << i) - 1);
+                                  ^
+
+
+[ShaderCompiler] Compiled: shaders/dispatch/astc_6x6_cs.hlsl -> 109700 bytes SPIRV
+[Pipeline] Ready: ASTC_6x6
+[ExperimentRunner] Loaded 1 textures
+
+=== Experiment: astc_6x6_quality_levels_test ===
+total_time_seconds: 1.5
+status: ok
+
+---
+format:          ASTC_6x6
+avg_psnr:        25.9655
+avg_ssim:        0.6999
+avg_flip:        0.0223
+avg_lpips:       0.0965
+avg_time_ms:     1.13
+num_textures:    1
+---
+[ResultsLogger] Logged to experiments/results/astc_6x6_quality_levels_test.tsv
+[Results] Logged to: experiments/results/astc_6x6_quality_levels_test.tsv
+Validation Error: [ VUID-vkDestroyDevice-device-05137 ] | MessageID = 0x4872eaa0
+vkDestroyDevice(): Object Tracking - For VkDevice 0x1a9e7d9b800, VkShaderModule 0x220000000022 has not been destroyed.
+The Vulkan spec states: All child objects created on device that can be destroyed or freed must have been destroyed or freed prior to destroying device (https://vulkan.lunarg.com/doc/view/1.4.328.1/windows/antora/spec/latest/chapters/devsandqueues.html#VUID-vkDestroyDevice-device-05137)
+Objects: 1
+    [0] VkShaderModule 0x220000000022
+
+Validation Error: [ VUID-vkDestroyDevice-device-05137 ] | MessageID = 0x4872eaa0
+vkDestroyDevice(): Object Tracking - For VkDevice 0x1a9e7d9b800, VkPipeline 0x270000000027 has not been destroyed.
+The Vulkan spec states: All child objects created on device that can be destroyed or freed must have been destroyed or freed prior to destroying device (https://vulkan.lunarg.com/doc/view/1.4.328.1/windows/antora/spec/latest/chapters/devsandqueues.html#VUID-vkDestroyDevice-device-05137)
+Objects: 1
+    [0] VkPipeline 0x270000000027
+
