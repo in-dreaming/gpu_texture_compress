@@ -75,10 +75,32 @@ uint2 compress_bc1(float3 pixels[16]) {
     uint best_ep0_565 = EncodeRGB565(endpoint0);
     uint best_ep1_565 = EncodeRGB565(endpoint1);
 
-    // Test inset factors: 0, 1/7, 2/7, 3/7, 6/7 (skip 4/7, 5/7 for speed)
-    float inset_factors[5] = { 0.0, 1.0/7.0, 2.0/7.0, 3.0/7.0, 6.0/7.0 };
+    // Test inset factors based on quality level
+    // QualityLevel 0: fewer factors for speed (0, 1/3, 2/3)
+    // QualityLevel 1: balanced factors (0, 1/7, 2/7, 3/7, 6/7)
+    // QualityLevel 2: all factors (0, 1/7, 2/7, 3/7, 4/7, 5/7, 6/7) for better quality
 
-    [unroll] for (int i = 0; i < 5; i++) {
+    float inset_factors_full[7] = { 0.0, 1.0/7.0, 2.0/7.0, 3.0/7.0, 4.0/7.0, 5.0/7.0, 6.0/7.0 };
+    float inset_factors_balanced[5] = { 0.0, 1.0/7.0, 2.0/7.0, 3.0/7.0, 6.0/7.0 };
+    float inset_factors_fast[3] = { 0.0, 1.0/3.0, 2.0/3.0 };
+
+    float inset_factors[7];
+    int num_factors = 5;  // default for QualityLevel 1
+
+    if (QualityLevel == 0) {
+        num_factors = 3;
+        inset_factors[0] = inset_factors_fast[0];
+        inset_factors[1] = inset_factors_fast[1];
+        inset_factors[2] = inset_factors_fast[2];
+    } else if (QualityLevel >= 2) {
+        num_factors = 7;
+        for (int j = 0; j < 7; j++) inset_factors[j] = inset_factors_full[j];
+    } else {
+        for (int j = 0; j < 5; j++) inset_factors[j] = inset_factors_balanced[j];
+    }
+
+    [unroll] for (int i = 0; i < 7; i++) {
+        if (i >= num_factors) break;
         float3 try_ep0 = lerp(mean, endpoint0, 1.0 - inset_factors[i]);
         float3 try_ep1 = lerp(mean, endpoint1, 1.0 - inset_factors[i]);
 
