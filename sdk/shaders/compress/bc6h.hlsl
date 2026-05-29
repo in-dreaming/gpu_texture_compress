@@ -230,8 +230,13 @@ uint4 compress_bc6h(float3 pixels[16]) {
         indices[qi] = bestIdx;
     }
 
-    // Iterative LSQ endpoint refinement (2 iterations for quality)
-    [unroll] for (int iter = 0; iter < 2; iter++) {
+    // Iterative LSQ endpoint refinement with QualityLevel-based iteration count
+    // QualityLevel 0: 0 iterations (fast, just use PCA endpoints)
+    // QualityLevel 1: 1 iteration (balanced)
+    // QualityLevel 2: 3 iterations (quality)
+    int lsq_iterations = (QualityLevel == 0) ? 0 : ((QualityLevel == 1) ? 1 : 3);
+
+    [loop] for (int iter = 0; iter < lsq_iterations; iter++) {
         // Fit new endpoints using LSQ
         float3 lsq_ep0, lsq_ep1;
         BC6H_LSQFitEndpoints(pixels, indices, lsq_ep0, lsq_ep1);

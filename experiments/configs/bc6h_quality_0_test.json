@@ -1,0 +1,13 @@
+{
+    "name": "bc6h_quality_0_test",
+    "formats": ["BC6H"],
+    "textures": [
+        "src_texture/Images/Khronos/LDR-RGB/ldr-rgb-diffuse.png",
+        "src_texture/Images/Khronos/LDR-RGB/ldr-rgb-metalrough.png",
+        "src_texture/Images/Khronos/LDR-RGB/ldr-rgb-emissive.png",
+        "src_texture/Images/Khronos/LDR-RGBA/ldr-rgba-base.png"
+    ],
+    "quality_level": 0,
+    "warmup_runs": 0,
+    "measurement_runs": 1
+}
