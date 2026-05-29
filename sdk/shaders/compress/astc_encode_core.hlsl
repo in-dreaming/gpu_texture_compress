@@ -511,17 +511,54 @@ uint4 encode_block(float4 texels[BLOCK_SIZE])
 	principal_component_analysis(texels, ep0, ep1);
 	//max_accumulation_pixel_direction(texels, ep0, ep1);
 
-	// endpoints_quant是根据整个128bits减去weights的编码占用和其他配置占用后剩余的bits位数来确定的。
-	// for fast compression!
-#if HAS_ALPHA
-	uint4 best_blockmode = uint4(QUANT_6, QUANT_256, 6, 7);
-#else
-	uint4 best_blockmode = uint4(QUANT_12, QUANT_256, 12, 7);
-#endif
+	// Determine quantization strategy based on QualityLevel and block size
+	// QualityLevel 0: Fast mode - lower weight bits for speed
+	// QualityLevel 1: Balanced mode - standard weight bits (default)
+	// QualityLevel 2: Quality mode - higher weight bits for quality
 
-//#if !FAST
-//	choose_best_quantmethod(texels, ep0, ep1, best_blockmode);
-//#endif
+	uint4 best_blockmode;
+
+#if BLOCK_6X6
+	// 6x6 blocks: need careful tuning
+	#if HAS_ALPHA
+		if (QualityLevel >= 2) {
+			best_blockmode = uint4(QUANT_8, QUANT_256, 8, 7);
+		} else if (QualityLevel == 1) {
+			best_blockmode = uint4(QUANT_8, QUANT_256, 8, 7);
+		} else {
+			best_blockmode = uint4(QUANT_6, QUANT_256, 6, 7);
+		}
+	#else
+		// 6x6 RGB: level 1 is standard
+		if (QualityLevel >= 2) {
+			best_blockmode = uint4(QUANT_12, QUANT_256, 12, 7);
+		} else if (QualityLevel == 1) {
+			best_blockmode = uint4(QUANT_12, QUANT_256, 12, 7);
+		} else {
+			best_blockmode = uint4(QUANT_12, QUANT_256, 12, 7);
+		}
+	#endif
+#else
+	// 4x4 blocks and other sizes
+	#if HAS_ALPHA
+		if (QualityLevel >= 2) {
+			best_blockmode = uint4(QUANT_8, QUANT_256, 8, 7);
+		} else if (QualityLevel == 1) {
+			best_blockmode = uint4(QUANT_6, QUANT_256, 6, 7);
+		} else {
+			best_blockmode = uint4(QUANT_4, QUANT_256, 4, 7);
+		}
+	#else
+		// 4x4 RGB: default QUANT_12 is optimal
+		if (QualityLevel >= 2) {
+			best_blockmode = uint4(QUANT_12, QUANT_256, 12, 7);
+		} else if (QualityLevel == 1) {
+			best_blockmode = uint4(QUANT_12, QUANT_256, 12, 7);
+		} else {
+			best_blockmode = uint4(QUANT_8, QUANT_256, 8, 7);
+		}
+	#endif
+#endif
 
 	uint weight_quantmethod = best_blockmode.x;
 	uint endpoint_quantmethod = best_blockmode.y;

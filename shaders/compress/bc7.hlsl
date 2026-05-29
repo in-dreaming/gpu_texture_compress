@@ -8,6 +8,11 @@
 //              Order: R0(7), R1(7), G0(7), G1(7), B0(7), B1(7), A0(7), A1(7)
 //   [63..64] = p-bits: P0(1), P1(1)
 //   [65..127]= indices: anchor pixel (3 bits) + 15 pixels (4 bits) = 63 bits
+//
+// QualityLevel support:
+//   0: Fast - PCA only, no LSQ refinement
+//   1: Balanced - PCA + 1 LSQ iteration (default)
+//   2: Quality - PCA + 3 LSQ iterations
 
 #ifndef COMPRESS_BC7_HLSL
 #define COMPRESS_BC7_HLSL
@@ -83,6 +88,54 @@ void BC7_WriteBits(inout uint4 block, uint value, uint bitPos, uint numBits) {
     }
 }
 
+// Helper: compute indices given fixed endpoints
+void BC7_ComputeIndices(float4 pixels[16], float4 fep0, float4 fep1, out uint indices[16]) {
+    float4 palette[16];
+    [unroll] for (int p = 0; p < 16; p++) {
+        float t = (float)p / 15.0;
+        palette[p] = (1.0 - t) * fep0 + t * fep1;
+    }
+
+    [unroll] for (int qi = 0; qi < 16; qi++) {
+        float bestDist = 1e10;
+        uint bestIdx = 0;
+        [unroll] for (int j = 0; j < 16; j++) {
+            float4 diff = pixels[qi] - palette[j];
+            float dist = dot(diff, diff);
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestIdx = (uint)j;
+            }
+        }
+        indices[qi] = bestIdx;
+    }
+}
+
+// Helper: Least-squares endpoint refinement given fixed indices
+void BC7_LSQ_RefineEndpoints(float4 pixels[16], uint indices[16], inout float4 ep0, inout float4 ep1) {
+    float4 sumPixels[16];
+    float weights[16];
+
+    [unroll] for (int i = 0; i < 16; i++) {
+        sumPixels[i] = float4(0, 0, 0, 0);
+        weights[i] = 0.0;
+    }
+
+    [unroll] for (int pi = 0; pi < 16; pi++) {
+        uint idx = indices[pi];
+        sumPixels[idx] += pixels[pi];
+        weights[idx] += 1.0;
+    }
+
+    // Recompute endpoints as average of assigned pixels
+    if (weights[0] > 0.5) {
+        ep0 = saturate(sumPixels[0] / weights[0]);
+    }
+    if (weights[15] > 0.5) {
+        ep1 = saturate(sumPixels[15] / weights[15]);
+    }
+}
+
 // Compress a 4x4 block of RGBA pixels into BC7 Mode 6 (128-bit block as uint4)
 uint4 compress_bc7(float4 pixels[16]) {
     // Compute mean
@@ -108,7 +161,53 @@ uint4 compress_bc7(float4 pixels[16]) {
     float4 endpoint0 = saturate(mean + axis * maxProj);
     float4 endpoint1 = saturate(mean + axis * minProj);
 
-    // Quantize endpoints to 7 bits (0..127)
+    // LSQ endpoint refinement loop - iterate based on quality level
+    uint lsq_iterations = (QualityLevel == 0) ? 0 : ((QualityLevel == 1) ? 1 : 3);
+
+    [loop] for (uint lsq_iter = 0; lsq_iter < lsq_iterations; lsq_iter++) {
+        // Quantize endpoints to 7 bits (0..127)
+        uint4 qep0 = uint4(
+            min((uint)(endpoint0.x * 127.0 + 0.5), 127u),
+            min((uint)(endpoint0.y * 127.0 + 0.5), 127u),
+            min((uint)(endpoint0.z * 127.0 + 0.5), 127u),
+            min((uint)(endpoint0.w * 127.0 + 0.5), 127u)
+        );
+        uint4 qep1 = uint4(
+            min((uint)(endpoint1.x * 127.0 + 0.5), 127u),
+            min((uint)(endpoint1.y * 127.0 + 0.5), 127u),
+            min((uint)(endpoint1.z * 127.0 + 0.5), 127u),
+            min((uint)(endpoint1.w * 127.0 + 0.5), 127u)
+        );
+
+        // P-bits
+        uint pbit0 = ((uint)(endpoint0.x * 255.0 + 0.5)) & 1u;
+        uint pbit1 = ((uint)(endpoint1.x * 255.0 + 0.5)) & 1u;
+
+        // Reconstruct effective 8-bit endpoints
+        float4 fep0 = float4(
+            (float)((qep0.x << 1) | pbit0) / 255.0,
+            (float)((qep0.y << 1) | pbit0) / 255.0,
+            (float)((qep0.z << 1) | pbit0) / 255.0,
+            (float)((qep0.w << 1) | pbit0) / 255.0
+        );
+        float4 fep1 = float4(
+            (float)((qep1.x << 1) | pbit1) / 255.0,
+            (float)((qep1.y << 1) | pbit1) / 255.0,
+            (float)((qep1.z << 1) | pbit1) / 255.0,
+            (float)((qep1.w << 1) | pbit1) / 255.0
+        );
+
+        // Compute indices
+        uint indices[16];
+        BC7_ComputeIndices(pixels, fep0, fep1, indices);
+
+        // LSQ refinement for next iteration if not last
+        if (lsq_iter < lsq_iterations - 1) {
+            BC7_LSQ_RefineEndpoints(pixels, indices, endpoint0, endpoint1);
+        }
+    }
+
+    // Final quantization
     uint4 qep0 = uint4(
         min((uint)(endpoint0.x * 127.0 + 0.5), 127u),
         min((uint)(endpoint0.y * 127.0 + 0.5), 127u),
@@ -122,12 +221,11 @@ uint4 compress_bc7(float4 pixels[16]) {
         min((uint)(endpoint1.w * 127.0 + 0.5), 127u)
     );
 
-    // P-bits: use LSB of the ideal 8-bit endpoint for best accuracy
+    // P-bits
     uint pbit0 = ((uint)(endpoint0.x * 255.0 + 0.5)) & 1u;
     uint pbit1 = ((uint)(endpoint1.x * 255.0 + 0.5)) & 1u;
 
-    // Reconstruct effective 8-bit endpoints for index assignment
-    // Mode 6: final_value = (endpoint7 << 1) | pbit, giving 8-bit precision
+    // Reconstruct effective 8-bit endpoints
     float4 fep0 = float4(
         (float)((qep0.x << 1) | pbit0) / 255.0,
         (float)((qep0.y << 1) | pbit0) / 255.0,
@@ -141,31 +239,11 @@ uint4 compress_bc7(float4 pixels[16]) {
         (float)((qep1.w << 1) | pbit1) / 255.0
     );
 
-    // Generate 16-level palette (4-bit indices, values 0..15)
-    float4 palette[16];
-    [unroll] for (int p = 0; p < 16; p++) {
-        float t = (float)p / 15.0;
-        palette[p] = (1.0 - t) * fep0 + t * fep1;
-    }
-
-    // Assign 4-bit index to each pixel (nearest palette entry)
+    // Final index assignment
     uint indices[16];
-    [unroll] for (int qi = 0; qi < 16; qi++) {
-        float bestDist = 1e10;
-        uint bestIdx = 0;
-        [unroll] for (int j = 0; j < 16; j++) {
-            float4 diff = pixels[qi] - palette[j];
-            float dist = dot(diff, diff);
-            if (dist < bestDist) {
-                bestDist = dist;
-                bestIdx = (uint)j;
-            }
-        }
-        indices[qi] = bestIdx;
-    }
+    BC7_ComputeIndices(pixels, fep0, fep1, indices);
 
     // If anchor pixel (index 0) has MSB set, flip all indices and swap endpoints
-    // (anchor index MSB is implicit 0 to resolve endpoint ordering ambiguity)
     if (indices[0] >= 8) {
         [unroll] for (int fi = 0; fi < 16; fi++) {
             indices[fi] = 15 - indices[fi];
@@ -183,7 +261,6 @@ uint4 compress_bc7(float4 pixels[16]) {
     uint bitPos = 0;
 
     // Mode bits [0..6]: 0000001 (mode 6 = bit position 6 is the '1')
-    // Value 64 = 0b1000000
     BC7_WriteBits(block, 64u, bitPos, 7);
     bitPos += 7;
 
