@@ -24,6 +24,30 @@ float3 DecodeRGB565(uint packed) {
     return float3(r, g, b);
 }
 
+// Helper: compute quantization error for given RGB565 endpoints
+float ComputeBC1Error(float3 pixels[16], uint ep0_565, uint ep1_565) {
+    float3 qep0 = DecodeRGB565(ep0_565);
+    float3 qep1 = DecodeRGB565(ep1_565);
+
+    float3 palette[4];
+    palette[0] = qep0;
+    palette[1] = qep1;
+    palette[2] = (2.0 / 3.0) * qep0 + (1.0 / 3.0) * qep1;
+    palette[3] = (1.0 / 3.0) * qep0 + (2.0 / 3.0) * qep1;
+
+    float error = 0.0;
+    [unroll] for (int pi = 0; pi < 16; pi++) {
+        float bestDist = 1e10;
+        [unroll] for (int j = 0; j < 4; j++) {
+            float3 diff = pixels[pi] - palette[j];
+            float dist = dot(diff, diff);
+            bestDist = min(bestDist, dist);
+        }
+        error += bestDist;
+    }
+    return error;
+}
+
 // Compress a 4x4 block of RGB pixels into BC1 (64-bit block as uint2)
 // .x = ep0_565 | (ep1_565 << 16)
 // .y = 32 bits of 2-bit indices (pixel 0 in LSBs)
@@ -46,32 +70,46 @@ uint2 compress_bc1(float3 pixels[16]) {
     float3 endpoint0 = saturate(mean + axis * maxProj);
     float3 endpoint1 = saturate(mean + axis * minProj);
 
-    // Inset endpoints slightly to reduce palette boundary error
-    endpoint0 = lerp(mean, endpoint0, 6.0 / 7.0);
-    endpoint1 = lerp(mean, endpoint1, 6.0 / 7.0);
+    // Try multiple inset factors and keep the best
+    float best_error = 1e10;
+    uint best_ep0_565 = EncodeRGB565(endpoint0);
+    uint best_ep1_565 = EncodeRGB565(endpoint1);
 
-    // Quantize to RGB565
-    uint ep0_565 = EncodeRGB565(endpoint0);
-    uint ep1_565 = EncodeRGB565(endpoint1);
+    // Test inset factors: 0, 1/7, 2/7, 3/7, 6/7 (skip 4/7, 5/7 for speed)
+    float inset_factors[5] = { 0.0, 1.0/7.0, 2.0/7.0, 3.0/7.0, 6.0/7.0 };
 
-    // Ensure ep0 > ep1 for 4-color mode (BC1 specification)
-    if (ep0_565 < ep1_565) {
-        uint tmp = ep0_565;
-        ep0_565 = ep1_565;
-        ep1_565 = tmp;
-        float3 tmpf = endpoint0;
-        endpoint0 = endpoint1;
-        endpoint1 = tmpf;
+    [unroll] for (int i = 0; i < 5; i++) {
+        float3 try_ep0 = lerp(mean, endpoint0, 1.0 - inset_factors[i]);
+        float3 try_ep1 = lerp(mean, endpoint1, 1.0 - inset_factors[i]);
+
+        uint try_ep0_565 = EncodeRGB565(try_ep0);
+        uint try_ep1_565 = EncodeRGB565(try_ep1);
+
+        // Ensure ep0 > ep1 for 4-color mode
+        if (try_ep0_565 < try_ep1_565) {
+            uint tmp = try_ep0_565;
+            try_ep0_565 = try_ep1_565;
+            try_ep1_565 = tmp;
+        }
+
+        if (try_ep0_565 != try_ep1_565) {
+            float error = ComputeBC1Error(pixels, try_ep0_565, try_ep1_565);
+            if (error < best_error) {
+                best_error = error;
+                best_ep0_565 = try_ep0_565;
+                best_ep1_565 = try_ep1_565;
+            }
+        }
     }
 
     // Handle degenerate case (same endpoints) - all indices zero
-    if (ep0_565 == ep1_565) {
-        return uint2(ep0_565 | (ep1_565 << 16), 0);
+    if (best_ep0_565 == best_ep1_565) {
+        return uint2(best_ep0_565 | (best_ep1_565 << 16), 0);
     }
 
     // Reconstruct quantized endpoints for accurate index assignment
-    float3 qep0 = DecodeRGB565(ep0_565);
-    float3 qep1 = DecodeRGB565(ep1_565);
+    float3 qep0 = DecodeRGB565(best_ep0_565);
+    float3 qep1 = DecodeRGB565(best_ep1_565);
 
     // Generate 4-color palette
     float3 palette[4];
@@ -97,7 +135,7 @@ uint2 compress_bc1(float3 pixels[16]) {
     }
 
     // Pack: endpoints in .x, indices in .y
-    return uint2(ep0_565 | (ep1_565 << 16), indices);
+    return uint2(best_ep0_565 | (best_ep1_565 << 16), indices);
 }
 
 #endif // COMPRESS_BC1_HLSL
