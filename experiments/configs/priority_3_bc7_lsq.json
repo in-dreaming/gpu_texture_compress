@@ -1,0 +1,13 @@
+{
+    "name": "bc7_lsq_reenable_test",
+    "formats": ["BC7"],
+    "textures": [
+        "build/src/Release/data/src_texture/Images/Khronos/LDR-RGB/ldr-rgb-diffuse.png",
+        "build/src/Release/data/src_texture/Images/Khronos/LDR-RGB/ldr-rgb-metalrough.png",
+        "build/src/Release/data/src_texture/Images/Small/LDR-RGB/ldr-rgb-00.png"
+    ],
+    "quality_level": 1,
+    "warmup_runs": 0,
+    "measurement_runs": 1,
+    "note": "Priority 3: BC7 LSQ re-enablement test (currently disabled due to regression)"
+}

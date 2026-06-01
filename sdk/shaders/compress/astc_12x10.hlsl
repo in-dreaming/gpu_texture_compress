@@ -1,30 +1,24 @@
+// ASTC 12x10: Q12 path via 4x4 subsample.
 #ifndef COMPRESS_ASTC_12X10_HLSL
 #define COMPRESS_ASTC_12X10_HLSL
 
-#include "astc_common.hlsl"
-
-//=============================================================================
-// ASTC 12x10 Block Compression
-// Block: 12x10 = 120 pixels
-// Grid:  4x4 = 16 weights (proportional mapping)
-// Mode:  QUANT_4 (2 bits/weight), CEM 8 (LDR RGB Direct)
-//=============================================================================
+#define BLOCK_6X6 0
+#define HAS_ALPHA 0
+#include "astc_encode_core.hlsl"
 
 uint4 compress_astc_12x10(float4 pixels[120])
 {
-    // NOTE: 12x10 format currently uses void-extent (constant color)
-    // because 4x4 weight grids are incompatible with 120-pixel blocks.
-    // Proper implementation requires 4x3, 5x3, or 6x3 weight grid with custom
-    // block mode encoding. This is a limitation of the simplified encoder.
-
-    float4 avg = float4(0, 0, 0, 1);
-    for (int i = 0; i < 120; i++)
-    {
-        avg += pixels[i];
+    // px = (gx*11+1)/3 -> {0,3,7,11}; py = (gy*9+1)/3 -> {0,3,6,9}
+    float4 texels[BLOCK_SIZE];
+    [unroll] for (int gy = 0; gy < 4; gy++) {
+        [unroll] for (int gx = 0; gx < 4; gx++) {
+            uint px = ((uint)gx * 11u + 1u) / 3u;
+            uint py = ((uint)gy * 9u + 1u) / 3u;
+            uint pidx = py * 12u + px;
+            texels[gy * 4 + gx] = pixels[pidx] * 255.0f;
+        }
     }
-    avg /= 120.0f;
-
-    return astc_void_extent(avg);
+    return encode_block(texels);
 }
 
-#endif // COMPRESS_ASTC_12X10_HLSL
+#endif

@@ -1,0 +1,12 @@
+{
+    "name": "astc_6x6_architecture_debug",
+    "formats": ["ASTC_4x4", "ASTC_6x6", "ASTC_8x8"],
+    "textures": [
+        "build/src/Release/data/src_texture/Images/Khronos/LDR-RGB/ldr-rgb-diffuse.png",
+        "build/src/Release/data/src_texture/Images/Small/LDR-RGB/ldr-rgb-00.png"
+    ],
+    "quality_level": 1,
+    "warmup_runs": 0,
+    "measurement_runs": 1,
+    "note": "Priority 1: Debug ASTC_6x6 22dB gap - test bilinear grid mapping architecture"
+}

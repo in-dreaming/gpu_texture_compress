@@ -1,0 +1,12 @@
+{
+    "name": "bc1_comprehensive_test_3tex",
+    "formats": ["BC1"],
+    "textures": [
+        "src_texture/Images/Khronos/LDR-RGB/ldr-rgb-diffuse.png",
+        "src_texture/Images/Khronos/LDR-RGB/ldr-rgb-metalrough.png",
+        "src_texture/Images/Khronos/LDR-RGB/ldr-rgb-emissive.png"
+    ],
+    "quality_level": 1,
+    "warmup_runs": 0,
+    "measurement_runs": 1
+}

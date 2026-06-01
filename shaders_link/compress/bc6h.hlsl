@@ -236,6 +236,13 @@ uint4 compress_bc6h(float3 pixels[16]) {
     // QualityLevel 2: 3 iterations (quality)
     int lsq_iterations = (QualityLevel == 0) ? 0 : ((QualityLevel == 1) ? 1 : 3);
 
+    // Compute initial error for guard comparison
+    float prev_error = 0.0;
+    [unroll] for (int ei = 0; ei < 16; ei++) {
+        float3 d = pixels[ei] - palette[indices[ei]];
+        prev_error += dot(d, d);
+    }
+
     [loop] for (int iter = 0; iter < lsq_iterations; iter++) {
         // Fit new endpoints using LSQ
         float3 lsq_ep0, lsq_ep1;
@@ -295,6 +302,8 @@ uint4 compress_bc6h(float3 pixels[16]) {
         }
 
         // Re-assign indices with new palette
+        uint new_indices[16];
+        float new_error = 0.0;
         [unroll] for (int qi = 0; qi < 16; qi++) {
             float bestDist = 1e10;
             uint bestIdx = 0;
@@ -306,12 +315,19 @@ uint4 compress_bc6h(float3 pixels[16]) {
                     bestIdx = (uint)j;
                 }
             }
-            indices[qi] = bestIdx;
+            new_indices[qi] = bestIdx;
+            new_error += bestDist;
         }
 
-        // Update endpoints for next iteration (or final packing)
-        ep0 = new_ep0;
-        ep1 = new_ep1;
+        // Error-guard: only commit if total error strictly improved.
+        if (new_error < prev_error) {
+            [unroll] for (int ci = 0; ci < 16; ci++) indices[ci] = new_indices[ci];
+            ep0 = new_ep0;
+            ep1 = new_ep1;
+            prev_error = new_error;
+        } else {
+            break;  // Converged or worsened — stop iterating
+        }
     }
 
     // Anchor bit handling: if anchor (index 0) MSB set, flip indices and swap endpoints

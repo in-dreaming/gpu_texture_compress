@@ -111,36 +111,48 @@ void BC7_ComputeIndices(float4 pixels[16], float4 fep0, float4 fep1, out uint in
     }
 }
 
-// Helper: Least-squares endpoint refinement given fixed indices
-// Uses linear regression to find best-fitting endpoints for the fixed index assignment
-void BC7_LSQ_RefineEndpoints(float4 pixels[16], uint indices[16], inout float4 ep0, inout float4 ep1) {
-    // Sum all pixels weighted by their index position [0,1]
-    float4 sumWeightedPixels = float4(0, 0, 0, 0);
-    float sumWeights = 0.0;
-    float4 sumIndexedPixels = float4(0, 0, 0, 0);
-    float sumIndexedWeights = 0.0;
+// Helper: compute total squared error of indices+endpoints against pixels
+float BC7_ComputeError(float4 pixels[16], uint indices[16], float4 fep0, float4 fep1) {
+    float total = 0.0;
+    [unroll] for (int ei = 0; ei < 16; ei++) {
+        float t = (float)indices[ei] / 15.0;
+        float4 reconstructed = (1.0 - t) * fep0 + t * fep1;
+        float4 d = pixels[ei] - reconstructed;
+        total += dot(d, d);
+    }
+    return total;
+}
 
-    // Compute weighted sums for linear regression
-    // We want to fit: pixel = ep0 * (1-t) + ep1 * t, where t = index/15
+// Helper: Least-squares endpoint refinement given fixed indices
+// Solves the 2x2 normal equations to find ep0, ep1 minimizing
+// sum_i || pixel_i - ((1-t_i)*ep0 + t_i*ep1) ||^2  where t_i = index_i / 15
+void BC7_LSQ_RefineEndpoints(float4 pixels[16], uint indices[16], inout float4 ep0, inout float4 ep1) {
+    // Build the 2x2 normal-equations matrix and the RHS vectors (one per channel)
+    float A = 0.0;  // sum (1-t)^2
+    float B = 0.0;  // sum (1-t)*t  (cross term)
+    float C = 0.0;  // sum t^2
+    float4 X = float4(0, 0, 0, 0);  // sum pixel * (1-t)
+    float4 Y = float4(0, 0, 0, 0);  // sum pixel * t
+
     [unroll] for (int pi = 0; pi < 16; pi++) {
         float t = (float)indices[pi] / 15.0;
+        float oneMinusT = 1.0 - t;
 
-        // Sum for ep0: pixel * (1-t)
-        sumWeightedPixels += pixels[pi] * (1.0 - t);
-        sumWeights += (1.0 - t) * (1.0 - t);
-
-        // Sum for ep1: pixel * t
-        sumIndexedPixels += pixels[pi] * t;
-        sumIndexedWeights += t * t;
+        A += oneMinusT * oneMinusT;
+        B += oneMinusT * t;
+        C += t * t;
+        X += pixels[pi] * oneMinusT;
+        Y += pixels[pi] * t;
     }
 
-    // Recompute endpoints with averaging
-    if (sumWeights > 0.001) {
-        ep0 = saturate(sumWeightedPixels / sumWeights);
+    // Solve [A B; B C] [ep0; ep1] = [X; Y] per channel
+    float det = A * C - B * B;
+    if (abs(det) > 1e-6) {
+        float invDet = 1.0 / det;
+        ep0 = saturate((C * X - B * Y) * invDet);
+        ep1 = saturate((A * Y - B * X) * invDet);
     }
-    if (sumIndexedWeights > 0.001) {
-        ep1 = saturate(sumIndexedPixels / sumIndexedWeights);
-    }
+    // Otherwise (degenerate, all indices equal or pure axis): keep current endpoints
 }
 
 // Compress a 4x4 block of RGBA pixels into BC7 Mode 6 (128-bit block as uint4)
@@ -169,10 +181,8 @@ uint4 compress_bc7(float4 pixels[16]) {
     float4 endpoint1 = saturate(mean + axis * minProj);
 
     // LSQ endpoint refinement loop - iterate based on quality level
-    // NOTE: LSQ refinement is currently disabled as it causes quality regression
-    // Proper LSQ would require linear regression, but simpler approach of averaging
-    // pixels at extreme indices is not effective
-    uint lsq_iterations = 0; // (QualityLevel == 0) ? 0 : ((QualityLevel == 1) ? 1 : 3);
+    // Each iteration: quantize endpoints, compute indices, refine via LSQ, only keep if error improves
+    uint lsq_iterations = (QualityLevel == 0) ? 0u : ((QualityLevel == 1) ? 1u : 2u);
 
     [loop] for (uint lsq_iter = 0; lsq_iter < lsq_iterations; lsq_iter++) {
         // Quantize endpoints to 7 bits (0..127)
@@ -211,9 +221,52 @@ uint4 compress_bc7(float4 pixels[16]) {
         uint indices[16];
         BC7_ComputeIndices(pixels, fep0, fep1, indices);
 
-        // LSQ refinement for next iteration if not last
-        if (lsq_iter < lsq_iterations - 1) {
-            BC7_LSQ_RefineEndpoints(pixels, indices, endpoint0, endpoint1);
+        // Compute error with current quantized endpoints + indices (the achievable encoding)
+        float currentError = BC7_ComputeError(pixels, indices, fep0, fep1);
+
+        // Try LSQ refinement
+        float4 candidate0 = endpoint0;
+        float4 candidate1 = endpoint1;
+        BC7_LSQ_RefineEndpoints(pixels, indices, candidate0, candidate1);
+
+        // Quantize the candidate, recompute indices, compare error
+        uint4 cqep0 = uint4(
+            min((uint)(candidate0.x * 127.0 + 0.5), 127u),
+            min((uint)(candidate0.y * 127.0 + 0.5), 127u),
+            min((uint)(candidate0.z * 127.0 + 0.5), 127u),
+            min((uint)(candidate0.w * 127.0 + 0.5), 127u)
+        );
+        uint4 cqep1 = uint4(
+            min((uint)(candidate1.x * 127.0 + 0.5), 127u),
+            min((uint)(candidate1.y * 127.0 + 0.5), 127u),
+            min((uint)(candidate1.z * 127.0 + 0.5), 127u),
+            min((uint)(candidate1.w * 127.0 + 0.5), 127u)
+        );
+        uint cpbit0 = ((uint)(candidate0.x * 255.0 + 0.5)) & 1u;
+        uint cpbit1 = ((uint)(candidate1.x * 255.0 + 0.5)) & 1u;
+        float4 cfep0 = float4(
+            (float)((cqep0.x << 1) | cpbit0) / 255.0,
+            (float)((cqep0.y << 1) | cpbit0) / 255.0,
+            (float)((cqep0.z << 1) | cpbit0) / 255.0,
+            (float)((cqep0.w << 1) | cpbit0) / 255.0
+        );
+        float4 cfep1 = float4(
+            (float)((cqep1.x << 1) | cpbit1) / 255.0,
+            (float)((cqep1.y << 1) | cpbit1) / 255.0,
+            (float)((cqep1.z << 1) | cpbit1) / 255.0,
+            (float)((cqep1.w << 1) | cpbit1) / 255.0
+        );
+        uint candidateIndices[16];
+        BC7_ComputeIndices(pixels, cfep0, cfep1, candidateIndices);
+        float candidateError = BC7_ComputeError(pixels, candidateIndices, cfep0, cfep1);
+
+        // Only commit refinement if it improves error
+        if (candidateError < currentError) {
+            endpoint0 = candidate0;
+            endpoint1 = candidate1;
+        } else {
+            // No improvement -> stop iterating
+            break;
         }
     }
 
@@ -231,9 +284,44 @@ uint4 compress_bc7(float4 pixels[16]) {
         min((uint)(endpoint1.w * 127.0 + 0.5), 127u)
     );
 
-    // P-bits
+    // P-bit search: try all 4 combinations of (pbit0, pbit1) and pick the lowest-error pair.
+    // P-bit shifts effective endpoint by 1 LSB across all channels uniformly. Since LSQ
+    // refined endpoints in continuous space without knowledge of the p-bit constraint, the
+    // default LSB-derived p-bit is often suboptimal. Cost: 4 trial palette evaluations.
     uint pbit0 = ((uint)(endpoint0.x * 255.0 + 0.5)) & 1u;
     uint pbit1 = ((uint)(endpoint1.x * 255.0 + 0.5)) & 1u;
+
+    if (QualityLevel >= 1) {
+        float bestPbitError = 1e10;
+        uint bestPbit0 = pbit0;
+        uint bestPbit1 = pbit1;
+        [unroll] for (uint pb0 = 0; pb0 < 2u; pb0++) {
+            [unroll] for (uint pb1 = 0; pb1 < 2u; pb1++) {
+                float4 trial_fep0 = float4(
+                    (float)((qep0.x << 1) | pb0) / 255.0,
+                    (float)((qep0.y << 1) | pb0) / 255.0,
+                    (float)((qep0.z << 1) | pb0) / 255.0,
+                    (float)((qep0.w << 1) | pb0) / 255.0
+                );
+                float4 trial_fep1 = float4(
+                    (float)((qep1.x << 1) | pb1) / 255.0,
+                    (float)((qep1.y << 1) | pb1) / 255.0,
+                    (float)((qep1.z << 1) | pb1) / 255.0,
+                    (float)((qep1.w << 1) | pb1) / 255.0
+                );
+                uint trial_indices[16];
+                BC7_ComputeIndices(pixels, trial_fep0, trial_fep1, trial_indices);
+                float trial_err = BC7_ComputeError(pixels, trial_indices, trial_fep0, trial_fep1);
+                if (trial_err < bestPbitError) {
+                    bestPbitError = trial_err;
+                    bestPbit0 = pb0;
+                    bestPbit1 = pb1;
+                }
+            }
+        }
+        pbit0 = bestPbit0;
+        pbit1 = bestPbit1;
+    }
 
     // Reconstruct effective 8-bit endpoints
     float4 fep0 = float4(

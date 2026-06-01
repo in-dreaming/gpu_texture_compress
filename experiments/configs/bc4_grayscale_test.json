@@ -1,0 +1,11 @@
+{
+    "name": "bc4_grayscale_single_texture",
+    "formats": ["BC4"],
+    "textures": [
+        "src_texture/Images/Khronos/LDR-L/ldr-l-occlusion.png",
+        "src_texture/Images/Khronos/LDR-L/ldr-l-diffuse-r.png"
+    ],
+    "quality_level": 1,
+    "warmup_runs": 0,
+    "measurement_runs": 1
+}

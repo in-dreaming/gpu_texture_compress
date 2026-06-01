@@ -1,0 +1,17 @@
+{
+    "name": "astc_all_khronos",
+    "formats": [
+        "ASTC_4x4", "ASTC_5x4", "ASTC_5x5", "ASTC_6x5", "ASTC_6x6",
+        "ASTC_8x5", "ASTC_8x6", "ASTC_8x8",
+        "ASTC_10x5", "ASTC_10x6", "ASTC_10x8", "ASTC_10x10",
+        "ASTC_12x10", "ASTC_12x12"
+    ],
+    "textures": [
+        "src_texture/Images/Khronos/LDR-RGB/ldr-rgb-diffuse.png",
+        "src_texture/Images/Khronos/LDR-RGB/ldr-rgb-metalrough.png",
+        "src_texture/Images/Khronos/LDR-RGB/ldr-rgb-emissive.png"
+    ],
+    "quality_level": 1,
+    "warmup_runs": 0,
+    "measurement_runs": 1
+}

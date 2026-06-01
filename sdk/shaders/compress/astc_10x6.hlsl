@@ -1,68 +1,24 @@
+// ASTC 10x6: Q12 path via 4x4 subsample.
 #ifndef COMPRESS_ASTC_10X6_HLSL
 #define COMPRESS_ASTC_10X6_HLSL
 
-#include "astc_common.hlsl"
-
-//=============================================================================
-// ASTC 10x6 Block Compression
-// Block: 10x6 = 60 pixels
-// Grid:  4x4 = 16 weights (proportional mapping)
-// Mode:  QUANT_4 (2 bits/weight), CEM 8 (LDR RGB Direct)
-//=============================================================================
+#define BLOCK_6X6 0
+#define HAS_ALPHA 0
+#include "astc_encode_core.hlsl"
 
 uint4 compress_astc_10x6(float4 pixels[60])
 {
-    // 1. Find min/max RGB across all pixels
-    float3 min_rgb = pixels[0].rgb;
-    float3 max_rgb = pixels[0].rgb;
-    for (int i = 1; i < 60; i++)
-    {
-        min_rgb = min(min_rgb, pixels[i].rgb);
-        max_rgb = max(max_rgb, pixels[i].rgb);
-    }
-
-    // 2. Check for uniform block -> void extent
-    float3 extent = max_rgb - min_rgb;
-    float max_extent = max(extent.x, max(extent.y, extent.z));
-    if (max_extent < (1.0f / 255.0f))
-    {
-        float4 avg = float4((min_rgb + max_rgb) * 0.5f, 1.0f);
-        return astc_void_extent(avg);
-    }
-
-    // 3. Quantize endpoints to 8-bit
-    uint endpoints[6];
-    endpoints[0] = (uint)(saturate(min_rgb.r) * 255.0f + 0.5f);
-    endpoints[1] = (uint)(saturate(max_rgb.r) * 255.0f + 0.5f);
-    endpoints[2] = (uint)(saturate(min_rgb.g) * 255.0f + 0.5f);
-    endpoints[3] = (uint)(saturate(max_rgb.g) * 255.0f + 0.5f);
-    endpoints[4] = (uint)(saturate(min_rgb.b) * 255.0f + 0.5f);
-    endpoints[5] = (uint)(saturate(max_rgb.b) * 255.0f + 0.5f);
-
-    // 4. Compute weights: map 4x4 grid to 10x6 pixel block
-    //    px = (gx * 9 + 1) / 3, py = (gy * 5 + 1) / 3
-    float3 axis = max_rgb - min_rgb;
-    float axis_len2 = dot(axis, axis);
-    uint weights[16];
-
-    [unroll]
-    for (int gy = 0; gy < 4; gy++)
-    {
-        [unroll]
-        for (int gx = 0; gx < 4; gx++)
-        {
-            uint px = ((uint)(gx) * 9u + 1u) / 3u;
-            uint py = ((uint)(gy) * 5u + 1u) / 3u;
-            uint pixel_idx = py * 10u + px;
-
-            float3 color = pixels[pixel_idx].rgb;
-            float t = dot(color - min_rgb, axis) / axis_len2;
-            weights[gy * 4 + gx] = astc_quantize_weight_q4(t);
+    // px = (gx*9+1)/3 -> {0,3,6,9}; py = (gy*5+1)/3 -> {0,2,3,5}
+    float4 texels[BLOCK_SIZE];
+    [unroll] for (int gy = 0; gy < 4; gy++) {
+        [unroll] for (int gx = 0; gx < 4; gx++) {
+            uint px = ((uint)gx * 9u + 1u) / 3u;
+            uint py = ((uint)gy * 5u + 1u) / 3u;
+            uint pidx = py * 10u + px;
+            texels[gy * 4 + gx] = pixels[pidx] * 255.0f;
         }
     }
-
-    // 5. Pack and return with correct block mode for 10x6
-    return astc_pack_block_with_mode(ASTC_BLOCK_MODE_10x6_Q4, endpoints, weights);
+    return encode_block(texels);
 }
 
-#endif // COMPRESS_ASTC_10X6_HLSL
+#endif

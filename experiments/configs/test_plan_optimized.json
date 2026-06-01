@@ -1,0 +1,64 @@
+{
+    "comment": "Optimized test plan with format-specific test data",
+    "test_suites": [
+        {
+            "name": "RGB_LDR_Baseline",
+            "formats": ["BC1", "BC3", "BC6H", "BC7", "ASTC_4x4"],
+            "textures": [
+                "build/src/Release/data/src_texture/Images/Khronos/LDR-RGB/ldr-rgb-diffuse.png",
+                "build/src/Release/data/src_texture/Images/Khronos/LDR-RGB/ldr-rgb-metalrough.png",
+                "build/src/Release/data/src_texture/Images/Khronos/LDR-RGB/ldr-rgb-emissive.png"
+            ],
+            "quality_level": 1,
+            "warmup_runs": 0,
+            "measurement_runs": 1,
+            "note": "Standard RGB LDR compression: BC1 (lossy), BC3 (BC1+BC4), BC6H (HDR), BC7 (max quality), ASTC_4x4 (adaptive)"
+        },
+        {
+            "name": "ASTC_Architecture_Debug",
+            "formats": ["ASTC_4x4", "ASTC_6x6", "ASTC_8x8"],
+            "textures": [
+                "build/src/Release/data/src_texture/Images/Khronos/LDR-RGB/ldr-rgb-diffuse.png"
+            ],
+            "quality_level": 1,
+            "warmup_runs": 0,
+            "measurement_runs": 1,
+            "note": "Deep dive into ASTC_6x6 22dB gap: test bilinear interpolation vs direct mapping"
+        },
+        {
+            "name": "BC4_Grayscale_Specialized",
+            "formats": ["BC4"],
+            "textures": [
+                "build/src/Release/data/src_texture/Images/Khronos/LDR-L/ldr-l-occlusion.png"
+            ],
+            "quality_level": 1,
+            "warmup_runs": 0,
+            "measurement_runs": 1,
+            "note": "BC4 on single-channel grayscale (not RGB converted to gray)"
+        },
+        {
+            "name": "BC5_Normal_Maps",
+            "formats": ["BC5"],
+            "textures": [
+                "build/src/Release/data/src_texture/Images/Khronos/LDR-XY/ldr-xy-normal1.png",
+                "build/src/Release/data/src_texture/Images/Khronos/LDR-XY/ldr-xy-normal2.png"
+            ],
+            "quality_level": 1,
+            "warmup_runs": 0,
+            "measurement_runs": 1,
+            "note": "BC5 on actual normal maps (RG channels only)"
+        },
+        {
+            "name": "RGBA_Alpha_Channel",
+            "formats": ["BC3", "BC7"],
+            "textures": [
+                "build/src/Release/data/src_texture/Images/Khronos/LDR-RGBA/ldr-rgba-base.png",
+                "build/src/Release/data/src_texture/Images/Khronos/LDR-RGBA/ldr-rgba-diffuse.png"
+            ],
+            "quality_level": 1,
+            "warmup_runs": 0,
+            "measurement_runs": 1,
+            "note": "RGBA formats with actual alpha channel data"
+        }
+    ]
+}

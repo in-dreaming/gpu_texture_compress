@@ -48,6 +48,64 @@ float ComputeBC1Error(float3 pixels[16], uint ep0_565, uint ep1_565) {
     return error;
 }
 
+// Helper: assign each pixel to its closest palette entry, return indices+t-values
+void BC1_AssignIndices(float3 pixels[16], uint ep0_565, uint ep1_565,
+                       out uint indices_out[16]) {
+    float3 qep0 = DecodeRGB565(ep0_565);
+    float3 qep1 = DecodeRGB565(ep1_565);
+    float3 palette[4];
+    palette[0] = qep0;
+    palette[1] = qep1;
+    palette[2] = (2.0 / 3.0) * qep0 + (1.0 / 3.0) * qep1;
+    palette[3] = (1.0 / 3.0) * qep0 + (2.0 / 3.0) * qep1;
+
+    [unroll] for (int pi = 0; pi < 16; pi++) {
+        float bestDist = 1e10;
+        uint bestIdx = 0;
+        [unroll] for (int j = 0; j < 4; j++) {
+            float3 diff = pixels[pi] - palette[j];
+            float dist = dot(diff, diff);
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestIdx = (uint)j;
+            }
+        }
+        indices_out[pi] = bestIdx;
+    }
+}
+
+// Helper: 2x2 LSQ refinement of BC1 endpoints (continuous space) given indices.
+// BC1 index → t mapping is non-linear: {0:0, 1:1, 2:1/3, 3:2/3}
+void BC1_LSQ_Refine(float3 pixels[16], uint indices[16],
+                    out float3 ep0_out, out float3 ep1_out, out bool ok) {
+    static const float t_lookup[4] = { 0.0, 1.0, 1.0/3.0, 2.0/3.0 };
+
+    float A = 0.0, B = 0.0, C = 0.0;
+    float3 X = float3(0,0,0), Y = float3(0,0,0);
+
+    [unroll] for (int pi = 0; pi < 16; pi++) {
+        float t = t_lookup[indices[pi]];
+        float oneMinusT = 1.0 - t;
+        A += oneMinusT * oneMinusT;
+        B += oneMinusT * t;
+        C += t * t;
+        X += pixels[pi] * oneMinusT;
+        Y += pixels[pi] * t;
+    }
+
+    float det = A * C - B * B;
+    if (abs(det) > 1e-6) {
+        float invDet = 1.0 / det;
+        ep0_out = saturate((C * X - B * Y) * invDet);
+        ep1_out = saturate((A * Y - B * X) * invDet);
+        ok = true;
+    } else {
+        ep0_out = float3(0,0,0);
+        ep1_out = float3(0,0,0);
+        ok = false;
+    }
+}
+
 // Compress a 4x4 block of RGB pixels into BC1 (64-bit block as uint2)
 // .x = ep0_565 | (ep1_565 << 16)
 // .y = 32 bits of 2-bit indices (pixel 0 in LSBs)
@@ -127,6 +185,36 @@ uint2 compress_bc1(float3 pixels[16]) {
     // Handle degenerate case (same endpoints) - all indices zero
     if (best_ep0_565 == best_ep1_565) {
         return uint2(best_ep0_565 | (best_ep1_565 << 16), 0);
+    }
+
+    // LSQ refinement: try refining endpoints based on best assignment so far.
+    // Only commit if the refined endpoints (after RGB565 quantization) lower error.
+    if (QualityLevel >= 1) {
+        uint refine_indices[16];
+        BC1_AssignIndices(pixels, best_ep0_565, best_ep1_565, refine_indices);
+
+        float3 refined_ep0, refined_ep1;
+        bool ok;
+        BC1_LSQ_Refine(pixels, refine_indices, refined_ep0, refined_ep1, ok);
+
+        if (ok) {
+            uint r_ep0_565 = EncodeRGB565(refined_ep0);
+            uint r_ep1_565 = EncodeRGB565(refined_ep1);
+            // Maintain ep0 > ep1 (4-color mode)
+            if (r_ep0_565 < r_ep1_565) {
+                uint tmp = r_ep0_565;
+                r_ep0_565 = r_ep1_565;
+                r_ep1_565 = tmp;
+            }
+            if (r_ep0_565 != r_ep1_565) {
+                float r_error = ComputeBC1Error(pixels, r_ep0_565, r_ep1_565);
+                if (r_error < best_error) {
+                    best_error = r_error;
+                    best_ep0_565 = r_ep0_565;
+                    best_ep1_565 = r_ep1_565;
+                }
+            }
+        }
     }
 
     // Reconstruct quantized endpoints for accurate index assignment
