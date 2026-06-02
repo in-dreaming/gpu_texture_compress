@@ -1,8 +1,10 @@
-// astc_encode_dual.hlsl
+// astc_encode_dual.hlsl (Optimized version - reduced unroll for size)
 // Per-block block-mode search: encodes the input block twice (once with 5x5
 // weight grid + QUANT_5, once with 4x4 weight grid + QUANT_12), simulates the
 // ASTC decoder for each result, and emits whichever physical block has lower
 // reconstruction error.
+//
+// OPTIMIZATION: Use [loop] instead of [unroll] for Mode B to reduce SPV size.
 //
 // Required macros (set before #include):
 //   BLOCK_W, BLOCK_H, BLOCK_SIZE
@@ -83,9 +85,6 @@ static float4 gd_eigen(float4x4 m)
 }
 
 // Bilinear sample of 4 nearest texels at continuous block-position
-// (gx * (Bw-1) / (Gw-1), gy * (Bh-1) / (Gh-1)).
-// Templated on Gw_minus_1 (passed as multiplier-numerator).
-// For 5x5 grid: Gw_minus_1 = 4. For 4x4 grid: Gw_minus_1 = 3.
 static float4 gd_sample_at(float4 texels[BLOCK_SIZE], uint gx, uint gy,
                             float scale_x, float scale_y)
 {
@@ -112,7 +111,7 @@ static float4 gd_sample_at(float4 texels[BLOCK_SIZE], uint gx, uint gy,
 }
 
 // =============================================================================
-// 5x5 grid + Q5 path
+// Mode A: 5x5 grid + Q5 path (keep unroll - primary path)
 // =============================================================================
 
 static void gd_pca_full(float4 texels[BLOCK_SIZE], out float4 ep0, out float4 ep1)
@@ -288,7 +287,7 @@ static uint4 gd_pack_5x5_q5(float4 ep0, float4 ep1, uint levels[25])
 }
 
 // =============================================================================
-// 4x4 grid + Q12 path (operates on the same BLOCK_SIZE texels via subsampling)
+// Mode B: 4x4 grid + Q12 path (use [loop] for size reduction)
 // =============================================================================
 
 static void gd_pca_16(float4 samples[16], out float4 ep0, out float4 ep1)
@@ -334,20 +333,20 @@ static void gd_calc_4x4_levels(float4 samples[16], float4 ep0, float4 ep1,
     float4 vec_k = ep1 - ep0;
     float lensq = dot(vec_k, vec_k);
     if (lensq < GD_SMALL_VAL) {
-        [unroll] for (i = 0; i < 16; ++i) levels[i] = 0u;
+        [loop] for (i = 0; i < 16; ++i) levels[i] = 0u;  // Changed: [unroll] -> [loop]
         return;
     }
     vec_k = normalize(vec_k);
 
     float projw[16];
     float minw = 1e31f, maxw = -1e31f;
-    [unroll] for (i = 0; i < 16; ++i) {
+    [loop] for (i = 0; i < 16; ++i) {  // Changed: [unroll] -> [loop]
         float w = dot(vec_k, samples[i] - ep0);
         minw = min(minw, w); maxw = max(maxw, w);
         projw[i] = w;
     }
     float invlen = 1.0f / max(GD_SMALL_VAL, maxw - minw);
-    [unroll] for (i = 0; i < 16; ++i) {
+    [loop] for (i = 0; i < 16; ++i) {  // Changed: [unroll] -> [loop]
         float n = saturate((projw[i] - minw) * invlen);
         uint q = (uint)(n * 11.0f + 0.5f);
         levels[i] = clamp(q, 0u, 11u);
@@ -358,7 +357,7 @@ static void gd_calc_4x4_levels(float4 samples[16], float4 ep0, float4 ep1,
 static float gd_recon_error_4x4(float4 texels[BLOCK_SIZE], float4 ep0, float4 ep1, uint levels[16])
 {
     float dw[16];
-    [unroll] for (uint i = 0; i < 16; ++i) dw[i] = (float)levels[i] / 11.0f;
+    [loop] for (uint i = 0; i < 16; ++i) dw[i] = (float)levels[i] / 11.0f;  // Changed: [unroll] -> [loop]
 
     uint Bw = (uint)BLOCK_W;
     uint Bh = (uint)BLOCK_H;
@@ -366,7 +365,7 @@ static float gd_recon_error_4x4(float4 texels[BLOCK_SIZE], float4 ep0, float4 ep
     uint Dt = (1024u + (Bh - 1u) / 2u) / (Bh - 1u);
 
     float total = 0.0f;
-    [unroll] for (uint p = 0; p < BLOCK_SIZE; ++p) {
+    [loop] for (uint p = 0; p < BLOCK_SIZE; ++p) {  // Changed: [unroll] -> [loop]
         uint s = p % Bw;
         uint t = p / Bw;
         uint cs = s * Ds;
@@ -419,13 +418,13 @@ static uint4 gd_pack_4x4_q12(float4 ep0, float4 ep1, uint levels[16])
     bise_endpoints(ep_quantized, QUANT_256, ep_ise);
 
     uint scrambled[16];
-    [unroll] for (uint i = 0; i < 16; ++i) {
+    [loop] for (uint i = 0; i < 16; ++i) {  // Changed: [unroll] -> [loop]
         scrambled[i] = scramble_table[QUANT_12 * WEIGHT_QUANTIZE_NUM + levels[i]];
     }
     uint4 wt_ise = uint4(0,0,0,0);
     gd_bise_16_q12(scrambled, wt_ise);
 
-    // Block mode 593: row 0, 4x4 grid, Q12, H=1, D=0 (computed via assemble_blockmode)
+    // Block mode 593: row 0, 4x4 grid, Q12, H=1, D=0
     const uint blockmode = 593u;
 
     uint4 phy = uint4(0,0,0,0);

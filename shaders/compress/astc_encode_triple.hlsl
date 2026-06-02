@@ -1,24 +1,10 @@
-// astc_encode_triple.hlsl
-// Extends dual-mode block-mode search by adding a third 1:1-grid path. The
-// per-block selection now picks the lowest reconstruction error from:
+// astc_encode_triple.hlsl (Optimized version - reduced unroll for size)
+// Extends dual-mode block-mode search by adding a third 1:1-grid path.
+// OPTIMIZATION: Use [loop] instead of [unroll] for non-critical paths to reduce SPV size.
 //
-//   Mode A: 5x5 grid + QUANT_5  + QUANT_256 endpoints      (block mode 242)
-//   Mode B: 4x4 grid + QUANT_12 + QUANT_256 endpoints      (block mode 593)
-//   Mode C: BwxBh grid (1:1) + QUANT_N + QUANT_256 endpts  (block mode T1_BLOCKMODE)
-//
-// Mode C is parameterized for direct-bit-pack quants (Q4/Q8 etc); Q3 with
-// trit ISE is not supported here.
-//
-// Required macros (in addition to BLOCK_W, BLOCK_H, BLOCK_SIZE, GRID_FUNC_NAME):
-//   T1_WEIGHT_Q_INDEX     - QUANT level index (e.g. QUANT_8 = 5)
-//   T1_WEIGHT_RANGE_M1    - levels - 1 (7 for Q8, 3 for Q4)
-//   T1_WEIGHT_BITS        - bits per weight (3 for Q8, 2 for Q4)
-//   T1_BLOCKMODE          - precomputed block mode (211 for 5x4+Q8, 354 for 6x5+Q4)
-//
-// All three modes share PCA-on-full-block structure; the encoder runs PCA
-// on the appropriate input per mode (full block for A and C, 16 subsampled
-// for B). Reconstruction error is computed via decoder-bilinear simulation
-// (modes A/B) or direct lookup (mode C, since 1:1 has no smoothing).
+// Mode A: 5x5 grid + QUANT_5  + QUANT_256 endpoints      (block mode 242)
+// Mode B: 4x4 grid + QUANT_12 + QUANT_256 endpoints      (block mode 593)  [loop optimized]
+// Mode C: BwxBh grid (1:1) + QUANT_N + QUANT_256 endpts  (block mode T1_BLOCKMODE) [loop optimized]
 
 #ifndef BLOCK_W
 #error "BLOCK_W must be defined"
@@ -176,7 +162,7 @@ static void gt_pca_16(float4 samples[16], out float4 ep0, out float4 ep1)
     ep0.a = 255.0f; ep1.a = 255.0f;
 }
 
-// ===== Mode A: 5x5 grid + Q5 =====
+// ===== Mode A: 5x5 grid + Q5 (keep unroll - primary path) =====
 
 static void gt_calc_5x5_levels(float4 texels[BLOCK_SIZE], float4 ep0, float4 ep1, out uint levels[25])
 {
@@ -283,26 +269,26 @@ static uint4 gt_pack_5x5_q5(float4 ep0, float4 ep1, uint levels[25])
     return phy;
 }
 
-// ===== Mode B: 4x4 grid + Q12 =====
+// ===== Mode B: 4x4 grid + Q12 (use [loop] for size reduction) =====
 
 static void gt_calc_4x4_levels(float4 samples[16], float4 ep0, float4 ep1, out uint levels[16])
 {
     int i = 0;
     float4 vec_k = ep1 - ep0;
     if (dot(vec_k, vec_k) < GT_SMALL_VAL) {
-        [unroll] for (i = 0; i < 16; ++i) levels[i] = 0u;
+        [loop] for (i = 0; i < 16; ++i) levels[i] = 0u;  // Changed: [unroll] -> [loop]
         return;
     }
     vec_k = normalize(vec_k);
     float projw[16];
     float minw = 1e31f, maxw = -1e31f;
-    [unroll] for (i = 0; i < 16; ++i) {
+    [loop] for (i = 0; i < 16; ++i) {  // Changed: [unroll] -> [loop]
         float w = dot(vec_k, samples[i] - ep0);
         minw = min(minw, w); maxw = max(maxw, w);
         projw[i] = w;
     }
     float invlen = 1.0f / max(GT_SMALL_VAL, maxw - minw);
-    [unroll] for (i = 0; i < 16; ++i) {
+    [loop] for (i = 0; i < 16; ++i) {  // Changed: [unroll] -> [loop]
         float n = saturate((projw[i] - minw) * invlen);
         levels[i] = clamp((uint)(n * 11.0f + 0.5f), 0u, 11u);
     }
@@ -311,12 +297,12 @@ static void gt_calc_4x4_levels(float4 samples[16], float4 ep0, float4 ep1, out u
 static float gt_recon_error_4x4(float4 texels[BLOCK_SIZE], float4 ep0, float4 ep1, uint levels[16])
 {
     float dw[16];
-    [unroll] for (uint i = 0; i < 16; ++i) dw[i] = (float)levels[i] / 11.0f;
+    [loop] for (uint i = 0; i < 16; ++i) dw[i] = (float)levels[i] / 11.0f;  // Changed: [unroll] -> [loop]
     uint Bw = (uint)BLOCK_W; uint Bh = (uint)BLOCK_H;
     uint Ds = (1024u + (Bw - 1u) / 2u) / (Bw - 1u);
     uint Dt = (1024u + (Bh - 1u) / 2u) / (Bh - 1u);
     float total = 0.0f;
-    [unroll] for (uint p = 0; p < BLOCK_SIZE; ++p) {
+    [loop] for (uint p = 0; p < BLOCK_SIZE; ++p) {  // Changed: [unroll] -> [loop]
         uint s = p % Bw; uint t = p / Bw;
         uint gs = (s * Ds * 3u + 32u) >> 6;
         uint gt2 = (t * Dt * 3u + 32u) >> 6;
@@ -353,7 +339,7 @@ static uint4 gt_pack_4x4_q12(float4 ep0, float4 ep1, uint levels[16])
     uint4 ep_ise = uint4(0,0,0,0);
     bise_endpoints(epq, QUANT_256, ep_ise);
     uint sc[16];
-    [unroll] for (uint i = 0; i < 16; ++i) sc[i] = scramble_table[QUANT_12 * WEIGHT_QUANTIZE_NUM + levels[i]];
+    [loop] for (uint i = 0; i < 16; ++i) sc[i] = scramble_table[QUANT_12 * WEIGHT_QUANTIZE_NUM + levels[i]];  // Changed: [unroll] -> [loop]
     uint4 wt = uint4(0,0,0,0);
     gt_bise_16_q12(sc, wt);
 
@@ -379,26 +365,26 @@ static uint4 gt_pack_4x4_q12(float4 ep0, float4 ep1, uint levels[16])
     return phy;
 }
 
-// ===== Mode C: 1:1 grid (BwxBh) + QN (direct bit pack) =====
+// ===== Mode C: 1:1 grid (BwxBh) + QN (use [loop] for size reduction) =====
 
 static void gt_calc_1to1_levels(float4 texels[BLOCK_SIZE], float4 ep0, float4 ep1, out uint levels[BLOCK_SIZE])
 {
     int i = 0;
     float4 vec_k = ep1 - ep0;
     if (dot(vec_k, vec_k) < GT_SMALL_VAL) {
-        [unroll] for (i = 0; i < BLOCK_SIZE; ++i) levels[i] = 0u;
+        [loop] for (i = 0; i < BLOCK_SIZE; ++i) levels[i] = 0u;  // Changed: [unroll] -> [loop]
         return;
     }
     vec_k = normalize(vec_k);
     float projw[BLOCK_SIZE];
     float minw = 1e31f, maxw = -1e31f;
-    [unroll] for (i = 0; i < BLOCK_SIZE; ++i) {
+    [loop] for (i = 0; i < BLOCK_SIZE; ++i) {  // Changed: [unroll] -> [loop]
         float w = dot(vec_k, texels[i] - ep0);
         minw = min(minw, w); maxw = max(maxw, w);
         projw[i] = w;
     }
     float invlen = 1.0f / max(GT_SMALL_VAL, maxw - minw);
-    [unroll] for (i = 0; i < BLOCK_SIZE; ++i) {
+    [loop] for (i = 0; i < BLOCK_SIZE; ++i) {  // Changed: [unroll] -> [loop]
         float n = saturate((projw[i] - minw) * invlen);
         levels[i] = clamp((uint)(n * (float)T1_WEIGHT_RANGE_M1 + 0.5f), 0u, (uint)T1_WEIGHT_RANGE_M1);
     }
@@ -408,35 +394,13 @@ static void gt_calc_1to1_levels(float4 texels[BLOCK_SIZE], float4 ep0, float4 ep
 static float gt_recon_error_1to1(float4 texels[BLOCK_SIZE], float4 ep0, float4 ep1, uint levels[BLOCK_SIZE])
 {
     float total = 0.0f;
-    [unroll] for (uint i = 0; i < BLOCK_SIZE; ++i) {
+    [loop] for (uint i = 0; i < BLOCK_SIZE; ++i) {  // Changed: [unroll] -> [loop]
         float w = (float)levels[i] / (float)T1_WEIGHT_RANGE_M1;
         float4 recon = lerp(ep0, ep1, w);
         float4 d = recon - texels[i];
         total += dot(d, d);
     }
     return total;
-}
-
-// Helper to pack weights with trit ISE (for QUANT_3)
-static void gt_pack_weights_trit(uint sc[BLOCK_SIZE], inout uint4 wt)
-{
-    uint bp = 0;
-    // Process in groups of 5 (trit encoding groups 5 values)
-    // QUANT_3 uses 0 extra bits per value (pure trit)
-    [unroll] for (uint g = 0; g < BLOCK_SIZE / 5; ++g) {
-        uint idx = g * 5;
-        encode_trits(0, sc[idx], sc[idx+1], sc[idx+2], sc[idx+3], sc[idx+4], wt, bp);
-    }
-    // Handle remainder
-    #if (BLOCK_SIZE % 5 == 1)
-        encode_trits(0, sc[BLOCK_SIZE-1], 0, 0, 0, 0, wt, bp);
-    #elif (BLOCK_SIZE % 5 == 2)
-        encode_trits(0, sc[BLOCK_SIZE-2], sc[BLOCK_SIZE-1], 0, 0, 0, wt, bp);
-    #elif (BLOCK_SIZE % 5 == 3)
-        encode_trits(0, sc[BLOCK_SIZE-3], sc[BLOCK_SIZE-2], sc[BLOCK_SIZE-1], 0, 0, wt, bp);
-    #elif (BLOCK_SIZE % 5 == 4)
-        encode_trits(0, sc[BLOCK_SIZE-4], sc[BLOCK_SIZE-3], sc[BLOCK_SIZE-2], sc[BLOCK_SIZE-1], 0, wt, bp);
-    #endif
 }
 
 static uint4 gt_pack_1to1(float4 ep0, float4 ep1, uint levels[BLOCK_SIZE])
@@ -449,22 +413,15 @@ static uint4 gt_pack_1to1(float4 ep0, float4 ep1, uint levels[BLOCK_SIZE])
     bise_endpoints(epq, QUANT_256, ep_ise);
 
     uint sc[BLOCK_SIZE];
-    [unroll] for (uint i = 0; i < BLOCK_SIZE; ++i) {
+    [loop] for (uint i = 0; i < BLOCK_SIZE; ++i) {  // Changed: [unroll] -> [loop]
         sc[i] = scramble_table[T1_WEIGHT_Q_INDEX * WEIGHT_QUANTIZE_NUM + levels[i]];
     }
 
     uint4 wt = uint4(0,0,0,0);
-
-#ifdef T1_IS_TRIT
-    // Use trit ISE encoding (for QUANT_3)
-    gt_pack_weights_trit(sc, wt);
-#else
-    // Use direct bit packing (for Q4, Q8, etc.)
     uint bp = 0;
-    [unroll] for (uint i = 0; i < BLOCK_SIZE; ++i) {
+    [loop] for (uint i = 0; i < BLOCK_SIZE; ++i) {  // Changed: [unroll] -> [loop]
         orbits8_ptr(wt, bp, sc[i], (uint)T1_WEIGHT_BITS);
     }
-#endif
 
     uint4 phy = uint4(0,0,0,0);
     phy.w |= reverse_byte(wt.x & 0xFF) << 24;

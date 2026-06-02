@@ -1,0 +1,10 @@
+{
+    "name": "quick_astc_6x5_pso_test",
+    "formats": ["ASTC_6x5"],
+    "textures": [
+        "src_texture/Images/Khronos/LDR-RGB/ldr-rgb-diffuse.png"
+    ],
+    "quality_level": 1,
+    "warmup_runs": 1,
+    "measurement_runs": 3
+}
