@@ -505,6 +505,79 @@ uint4 weight_ise(float4 texels[BLOCK_SIZE], uint weight_range, float4 ep0, float
 	return wt_ise;
 }
 
+// Helper: find min/max along a unit axis, build endpoints, with optional alpha override.
+void find_endpoints_for_axis(float4 texels[BLOCK_SIZE], float4 axis_unit, float4 mean,
+                              out float4 ep0_out, out float4 ep1_out)
+{
+	float a = 1e31f;
+	float b = -1e31f;
+	[unroll] for (int i = 0; i < BLOCK_SIZE; ++i) {
+		float t = dot(texels[i] - mean, axis_unit);
+		a = min(a, t);
+		b = max(b, t);
+	}
+	float4 e0 = clamp(axis_unit * a + mean, 0.0f, 255.0f);
+	float4 e1 = clamp(axis_unit * b + mean, 0.0f, 255.0f);
+
+	// Order so darker endpoint comes first (consistent with PCA path)
+	float4 e0u = round(e0);
+	float4 e1u = round(e1);
+	if (e0u.x + e0u.y + e0u.z > e1u.x + e1u.y + e1u.z) {
+		float4 tmp = e0; e0 = e1; e1 = tmp;
+	}
+
+#if !HAS_ALPHA
+	e0.a = 255.0f;
+	e1.a = 255.0f;
+#endif
+	ep0_out = e0;
+	ep1_out = e1;
+}
+
+// Helper: estimate quantization error for given endpoints + weight quantization.
+// Mirrors the encoder's actual projection + renormalization + dequant model so
+// that the comparison across candidate axes is self-consistent.
+float estimate_axis_error(float4 texels[BLOCK_SIZE], float4 ep0, float4 ep1, uint weight_range)
+{
+	float4 dir = ep1 - ep0;
+	float lensq = dot(dir, dir);
+	if (lensq < SMALL_VALUE) {
+		// Degenerate axis (ep0 == ep1): all reconstructions are ep0; error = block variance from ep0.
+		float total = 0.0f;
+		[unroll] for (int i = 0; i < BLOCK_SIZE; ++i) {
+			float4 d = texels[i] - ep0;
+			total += dot(d, d);
+		}
+		return total;
+	}
+
+	float4 axis_unit = dir / sqrt(lensq);
+
+	// Min/max projection (matches encoder's calculate_normal_weights renormalization)
+	float minp = 1e31f, maxp = -1e31f;
+	[unroll] for (int i = 0; i < BLOCK_SIZE; ++i) {
+		float w = dot(axis_unit, texels[i] - ep0);
+		minp = min(minp, w);
+		maxp = max(maxp, w);
+	}
+	float range = max(maxp - minp, SMALL_VALUE);
+	float invlen = 1.0f / range;
+	float wr_inv = 1.0f / float(weight_range - 1);
+
+	float total_err = 0.0f;
+	[unroll] for (int j = 0; j < BLOCK_SIZE; ++j) {
+		float w = dot(axis_unit, texels[j] - ep0);
+		float t_norm = saturate((w - minp) * invlen);
+		uint qw = (uint)(t_norm * float(weight_range - 1) + 0.5f);
+		if (qw > weight_range - 1) qw = weight_range - 1;
+		float t_dec = float(qw) * wr_inv;
+		float4 recon = lerp(ep0, ep1, t_dec);
+		float4 d = texels[j] - recon;
+		total_err += dot(d, d);
+	}
+	return total_err;
+}
+
 uint4 encode_block(float4 texels[BLOCK_SIZE])
 {
 	float4 ep0, ep1;
@@ -564,6 +637,48 @@ uint4 encode_block(float4 texels[BLOCK_SIZE])
 	uint endpoint_quantmethod = best_blockmode.y;
 	uint weight_range = best_blockmode.z;
 	uint colorquant_index = best_blockmode.w;
+
+	// ===== PCA axis search (Direction #1) =====
+	// Try the PCA axis + RGB-aligned axes; pick lowest quantized error.
+	// For natural images PCA usually wins, but RGB-aligned axes can be better when
+	// PCA convergence is degenerate (e.g., near-constant blocks where eigenvalues
+	// are tied) or when one channel dominates the variance.
+	if (QualityLevel >= 1) {
+		// Compute mean for use with alternative axes
+		float4 mean = float4(0,0,0,0);
+		[unroll] for (int mi = 0; mi < BLOCK_SIZE; ++mi) mean += texels[mi];
+		mean /= float(BLOCK_SIZE);
+
+		float best_err = estimate_axis_error(texels, ep0, ep1, weight_range);
+
+		// Candidate axes: 3 RGB unit axes
+		// (Don't include alpha axis — when !HAS_ALPHA endpoints have a forced to 255.)
+		[unroll] for (int c = 0; c < 3; c++) {
+			float4 axis = float4(0,0,0,0);
+			if (c == 0) axis = float4(1, 0, 0, 0);
+			else if (c == 1) axis = float4(0, 1, 0, 0);
+			else axis = float4(0, 0, 1, 0);
+
+			float4 cand_ep0, cand_ep1;
+			find_endpoints_for_axis(texels, axis, mean, cand_ep0, cand_ep1);
+			float cand_err = estimate_axis_error(texels, cand_ep0, cand_ep1, weight_range);
+			if (cand_err < best_err) {
+				best_err = cand_err;
+				ep0 = cand_ep0;
+				ep1 = cand_ep1;
+			}
+		}
+	}
+
+	// NOTE: Error-guarded LSQ refinement was attempted here (mirrors BC7's pattern)
+	// but regressed -0.37 dB on ASTC_4x4. Root cause: ASTC's calculate_normal_weights()
+	// renormalizes weights to per-block min/max projections, so weights are NOT a
+	// direct function of (ep1-ep0). Stored endpoints only set the axis DIRECTION.
+	// LSQ on endpoints disrupts the "stored_ep = data extreme along axis" invariant.
+	//
+	// Future: to enable LSQ-style refinement for ASTC, would need to either
+	// (a) remove the weight renormalization (changes encoder semantics), or
+	// (b) refine the PCA AXIS direction instead of endpoint magnitudes.
 
 	// reference to arm astc encoder "symbolic_to_physical"
 	//uint bytes_of_one_endpoint = 2 * (color_endpoint_mode >> 2) + 2;

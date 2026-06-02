@@ -22,6 +22,7 @@ experiments/results/
 experiments/results.tsv
 run.log
 build_err.log
+benchmark_output.log
 
 # OS
 Thumbs.db

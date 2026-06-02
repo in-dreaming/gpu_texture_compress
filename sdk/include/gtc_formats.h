@@ -35,6 +35,22 @@ enum GtcFormat {
     GTC_FORMAT_ASTC_12x10,  // 1.07 bpp
     GTC_FORMAT_ASTC_12x12,  // 0.89 bpp
 
+    // HDR ASTC formats (HDR RGB + LDR Alpha profile)
+    GTC_FORMAT_ASTC_4x4_HDR,    // 8.00 bpp, HDR RGB
+    GTC_FORMAT_ASTC_5x4_HDR,    // 6.40 bpp, HDR RGB
+    GTC_FORMAT_ASTC_5x5_HDR,    // 5.12 bpp, HDR RGB
+    GTC_FORMAT_ASTC_6x5_HDR,    // 4.27 bpp, HDR RGB
+    GTC_FORMAT_ASTC_6x6_HDR,    // 3.56 bpp, HDR RGB
+    GTC_FORMAT_ASTC_8x5_HDR,    // 3.20 bpp, HDR RGB
+    GTC_FORMAT_ASTC_8x6_HDR,    // 2.67 bpp, HDR RGB
+    GTC_FORMAT_ASTC_8x8_HDR,    // 2.00 bpp, HDR RGB
+    GTC_FORMAT_ASTC_10x5_HDR,   // 2.56 bpp, HDR RGB
+    GTC_FORMAT_ASTC_10x6_HDR,   // 2.13 bpp, HDR RGB
+    GTC_FORMAT_ASTC_10x8_HDR,   // 1.60 bpp, HDR RGB
+    GTC_FORMAT_ASTC_10x10_HDR,  // 1.28 bpp, HDR RGB
+    GTC_FORMAT_ASTC_12x10_HDR,  // 1.07 bpp, HDR RGB
+    GTC_FORMAT_ASTC_12x12_HDR,  // 0.89 bpp, HDR RGB
+
     GTC_FORMAT_COUNT
 };
 
@@ -74,6 +90,21 @@ inline const GtcFormatInfo& get_format_info(GtcFormat format) {
         { 10, 10, 16, 1.28f, "ASTC_10x10", "dispatch/astc_10x10_cs.hlsl"},
         { 12, 10, 16, 1.07f, "ASTC_12x10", "dispatch/astc_12x10_cs.hlsl"},
         { 12, 12, 16, 0.89f, "ASTC_12x12", "dispatch/astc_12x12_cs.hlsl"},
+        // HDR ASTC
+        {  4,  4, 16, 8.00f, "ASTC_4x4_HDR",  "dispatch/astc_4x4_hdr_cs.hlsl"},
+        {  5,  4, 16, 6.40f, "ASTC_5x4_HDR",  "dispatch/astc_5x4_hdr_cs.hlsl"},
+        {  5,  5, 16, 5.12f, "ASTC_5x5_HDR",  "dispatch/astc_5x5_hdr_cs.hlsl"},
+        {  6,  5, 16, 4.27f, "ASTC_6x5_HDR",  "dispatch/astc_6x5_hdr_cs.hlsl"},
+        {  6,  6, 16, 3.56f, "ASTC_6x6_HDR",  "dispatch/astc_6x6_hdr_cs.hlsl"},
+        {  8,  5, 16, 3.20f, "ASTC_8x5_HDR",  "dispatch/astc_8x5_hdr_cs.hlsl"},
+        {  8,  6, 16, 2.67f, "ASTC_8x6_HDR",  "dispatch/astc_8x6_hdr_cs.hlsl"},
+        {  8,  8, 16, 2.00f, "ASTC_8x8_HDR",  "dispatch/astc_8x8_hdr_cs.hlsl"},
+        { 10,  5, 16, 2.56f, "ASTC_10x5_HDR", "dispatch/astc_10x5_hdr_cs.hlsl"},
+        { 10,  6, 16, 2.13f, "ASTC_10x6_HDR", "dispatch/astc_10x6_hdr_cs.hlsl"},
+        { 10,  8, 16, 1.60f, "ASTC_10x8_HDR", "dispatch/astc_10x8_hdr_cs.hlsl"},
+        { 10, 10, 16, 1.28f, "ASTC_10x10_HDR", "dispatch/astc_10x10_hdr_cs.hlsl"},
+        { 12, 10, 16, 1.07f, "ASTC_12x10_HDR", "dispatch/astc_12x10_hdr_cs.hlsl"},
+        { 12, 12, 16, 0.89f, "ASTC_12x12_HDR", "dispatch/astc_12x12_hdr_cs.hlsl"},
     };
     return infos[format];
 }

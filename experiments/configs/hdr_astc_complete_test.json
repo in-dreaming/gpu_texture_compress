@@ -1,0 +1,16 @@
+{
+    "name": "hdr_astc_complete_test",
+    "formats": [
+        "ASTC_4x4_HDR", "ASTC_5x4_HDR", "ASTC_5x5_HDR",
+        "ASTC_6x5_HDR", "ASTC_6x6_HDR",
+        "ASTC_8x5_HDR", "ASTC_8x6_HDR", "ASTC_8x8_HDR",
+        "ASTC_10x5_HDR", "ASTC_10x6_HDR", "ASTC_10x8_HDR", "ASTC_10x10_HDR",
+        "ASTC_12x10_HDR", "ASTC_12x12_HDR"
+    ],
+    "textures": [
+        "src_texture/Images/HDRIHaven/HDR-RGB/hdr-rgb-arboretum.hdr"
+    ],
+    "quality_level": 1,
+    "warmup_runs": 1,
+    "measurement_runs": 3
+}

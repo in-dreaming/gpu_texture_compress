@@ -1,0 +1,10 @@
+{
+    "name": "bc7_mode1_test",
+    "formats": ["BC7"],
+    "textures": [
+        "src_texture/Images/Small/LDR-RGB/ldr-rgb-00.png"
+    ],
+    "quality_level": 2,
+    "warmup_runs": 1,
+    "measurement_runs": 3
+}

@@ -1,0 +1,11 @@
+{
+    "name": "bc4_bc5_grayscale_test",
+    "formats": ["BC4", "BC5"],
+    "textures": [
+        "src_texture/Images/Khronos/LDR-L/ldr-l-diffuse-r.png",
+        "src_texture/Images/Khronos/LDR-L/ldr-l-occlusion.png"
+    ],
+    "quality_level": 1,
+    "warmup_runs": 1,
+    "measurement_runs": 3
+}

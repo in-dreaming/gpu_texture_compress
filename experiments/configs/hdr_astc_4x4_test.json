@@ -1,0 +1,10 @@
+{
+    "name": "hdr_astc_4x4_test",
+    "formats": ["ASTC_4x4_HDR"],
+    "textures": [
+        "src_texture/Images/Khronos/LDR-RGB/ldr-rgb-diffuse.png"
+    ],
+    "quality_level": 1,
+    "warmup_runs": 1,
+    "measurement_runs": 3
+}

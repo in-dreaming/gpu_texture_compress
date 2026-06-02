@@ -171,6 +171,21 @@ TextureData Decompressor::decompress(const uint8_t* data, uint32_t width, uint32
         case GTC_FORMAT_ASTC_10x10: return decompress_astc(data, width, height, 10, 10);
         case GTC_FORMAT_ASTC_12x10: return decompress_astc(data, width, height, 12, 10);
         case GTC_FORMAT_ASTC_12x12: return decompress_astc(data, width, height, 12, 12);
+        // HDR ASTC formats (same block layout as LDR, just HDR content)
+        case GTC_FORMAT_ASTC_4x4_HDR:  return decompress_astc(data, width, height, 4, 4);
+        case GTC_FORMAT_ASTC_5x4_HDR:  return decompress_astc(data, width, height, 5, 4);
+        case GTC_FORMAT_ASTC_5x5_HDR:  return decompress_astc(data, width, height, 5, 5);
+        case GTC_FORMAT_ASTC_6x5_HDR:  return decompress_astc(data, width, height, 6, 5);
+        case GTC_FORMAT_ASTC_6x6_HDR:  return decompress_astc(data, width, height, 6, 6);
+        case GTC_FORMAT_ASTC_8x5_HDR:  return decompress_astc(data, width, height, 8, 5);
+        case GTC_FORMAT_ASTC_8x6_HDR:  return decompress_astc(data, width, height, 8, 6);
+        case GTC_FORMAT_ASTC_8x8_HDR:  return decompress_astc(data, width, height, 8, 8);
+        case GTC_FORMAT_ASTC_10x5_HDR: return decompress_astc(data, width, height, 10, 5);
+        case GTC_FORMAT_ASTC_10x6_HDR: return decompress_astc(data, width, height, 10, 6);
+        case GTC_FORMAT_ASTC_10x8_HDR: return decompress_astc(data, width, height, 10, 8);
+        case GTC_FORMAT_ASTC_10x10_HDR: return decompress_astc(data, width, height, 10, 10);
+        case GTC_FORMAT_ASTC_12x10_HDR: return decompress_astc(data, width, height, 12, 10);
+        case GTC_FORMAT_ASTC_12x12_HDR: return decompress_astc(data, width, height, 12, 12);
         default: {
             TextureData empty;
             return empty;
@@ -188,11 +203,25 @@ TextureData Decompressor::decompress_bc3(const uint8_t* data, uint32_t w, uint32
 }
 
 TextureData Decompressor::decompress_bc4(const uint8_t* data, uint32_t w, uint32_t h) {
-    return decompress_bc_generic(data, w, h, 8, D3DXDecodeBC4U);
+    TextureData result = decompress_bc_generic(data, w, h, 8, D3DXDecodeBC4U);
+    // BC4 is single-channel; replicate R to G/B for fair PSNR comparison
+    for (uint32_t i = 0; i < w * h; i++) {
+        uint8_t r = result.pixels[i * 4 + 0];
+        result.pixels[i * 4 + 1] = r;  // G = R
+        result.pixels[i * 4 + 2] = r;  // B = R
+    }
+    return result;
 }
 
 TextureData Decompressor::decompress_bc5(const uint8_t* data, uint32_t w, uint32_t h) {
-    return decompress_bc_generic(data, w, h, 16, D3DXDecodeBC5U);
+    TextureData result = decompress_bc_generic(data, w, h, 16, D3DXDecodeBC5U);
+    // BC5 is two-channel (R+G); replicate max(R,G) to B for fair PSNR comparison
+    for (uint32_t i = 0; i < w * h; i++) {
+        uint8_t r = result.pixels[i * 4 + 0];
+        uint8_t g = result.pixels[i * 4 + 1];
+        result.pixels[i * 4 + 2] = (r > g) ? r : g;  // B = max(R,G)
+    }
+    return result;
 }
 
 TextureData Decompressor::decompress_bc6h(const uint8_t* data, uint32_t w, uint32_t h) {
