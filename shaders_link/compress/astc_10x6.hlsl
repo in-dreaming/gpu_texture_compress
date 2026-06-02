@@ -1,24 +1,22 @@
-// ASTC 10x6: Q12 path via 4x4 subsample.
+// ASTC 10x6: 5x5 weight grid encoder.
 #ifndef COMPRESS_ASTC_10X6_HLSL
 #define COMPRESS_ASTC_10X6_HLSL
 
-#define BLOCK_6X6 0
-#define HAS_ALPHA 0
-#include "astc_encode_core.hlsl"
+#define BLOCK_W 10
+#define BLOCK_H 6
+#define BLOCK_SIZE 60
+#define GRID_FUNC_NAME encode_block_5x5_in_10x6
+#include "astc_encode_grid5x5_generic.hlsl"
+#undef BLOCK_W
+#undef BLOCK_H
+#undef BLOCK_SIZE
+#undef GRID_FUNC_NAME
 
 uint4 compress_astc_10x6(float4 pixels[60])
 {
-    // px = (gx*9+1)/3 -> {0,3,6,9}; py = (gy*5+1)/3 -> {0,2,3,5}
-    float4 texels[BLOCK_SIZE];
-    [unroll] for (int gy = 0; gy < 4; gy++) {
-        [unroll] for (int gx = 0; gx < 4; gx++) {
-            uint px = ((uint)gx * 9u + 1u) / 3u;
-            uint py = ((uint)gy * 5u + 1u) / 3u;
-            uint pidx = py * 10u + px;
-            texels[gy * 4 + gx] = pixels[pidx] * 255.0f;
-        }
-    }
-    return encode_block(texels);
+    float4 texels[60];
+    [unroll] for (int i = 0; i < 60; i++) texels[i] = pixels[i] * 255.0f;
+    return encode_block_5x5_in_10x6(texels);
 }
 
 #endif

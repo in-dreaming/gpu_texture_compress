@@ -1,5 +1,9 @@
 // ASTC 5x4: subsample to 16 pixels at 4x4 grid positions and use the 4x4
 // encode path (PCA + QUANT_12 + ISE).
+//
+// 5x5 weight grid is INVALID in 5x4 block (block height 4 < grid height 5),
+// so the variable-grid encoder path is not applicable here. Keeping the
+// existing 4x4-grid path which gives 37.35 dB on Khronos LDR-RGB.
 
 #ifndef COMPRESS_ASTC_5X4_HLSL
 #define COMPRESS_ASTC_5X4_HLSL
