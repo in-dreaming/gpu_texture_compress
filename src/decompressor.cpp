@@ -144,6 +144,109 @@ static TextureData decompress_astc_official(const uint8_t* data, uint32_t w, uin
     return result;
 }
 
+// HDR ASTC decompression: uses HDR profile and F32 output for proper HDR pipeline.
+// Result has is_hdr = true with float32 pixel data (4 floats per pixel).
+static TextureData decompress_astc_hdr_official(const uint8_t* data, uint32_t w, uint32_t h,
+                                                uint32_t block_x, uint32_t block_y) {
+    TextureData result;
+    result.width = w;
+    result.height = h;
+    result.channels = 4;
+    result.is_hdr = true;
+    result.format = TexelFormat::RGBA32_FLOAT;
+    // pixels stores float bytes: w * h * 4 channels * 4 bytes/float
+    result.pixels.resize((size_t)w * h * 4 * sizeof(float));
+
+    // HDR RGB profile (alpha is LDR; this is the standard astcenc HDR mode)
+    astcenc_config config;
+    astcenc_error status = astcenc_config_init(
+        ASTCENC_PRF_HDR_RGB_LDR_A,
+        block_x, block_y, 1,
+        ASTCENC_PRE_FASTEST,
+        ASTCENC_FLG_DECOMPRESS_ONLY,
+        &config
+    );
+
+    if (status != ASTCENC_SUCCESS) {
+        fprintf(stderr, "[Decompressor] ASTC HDR config init failed: %d\n", (int)status);
+        return result;
+    }
+
+    astcenc_context* context = nullptr;
+    status = astcenc_context_alloc(&config, 1, &context, nullptr);
+    if (status != ASTCENC_SUCCESS) {
+        fprintf(stderr, "[Decompressor] ASTC HDR context alloc failed: %d\n", (int)status);
+        return result;
+    }
+
+    astcenc_image image;
+    image.dim_x = w;
+    image.dim_y = h;
+    image.dim_z = 1;
+    image.data_type = ASTCENC_TYPE_F32;
+    // For F32 output, slices point to float arrays
+    float* slices[1] = { reinterpret_cast<float*>(result.pixels.data()) };
+    image.data = reinterpret_cast<void**>(slices);
+
+    uint32_t blocks_x_count = (w + block_x - 1) / block_x;
+    uint32_t blocks_y_count = (h + block_y - 1) / block_y;
+    size_t data_len = (size_t)blocks_x_count * blocks_y_count * 16;
+
+    astcenc_swizzle swizzle = { ASTCENC_SWZ_R, ASTCENC_SWZ_G, ASTCENC_SWZ_B, ASTCENC_SWZ_A };
+
+    status = astcenc_decompress_image(context, data, data_len, &image, &swizzle, 0);
+    if (status != ASTCENC_SUCCESS) {
+        fprintf(stderr, "[Decompressor] ASTC HDR decompress failed: %d\n", (int)status);
+    }
+
+    astcenc_context_free(context);
+    return result;
+}
+
+// HDR BC6H decompression: produces float32 RGBA pixel data for proper HDR comparison.
+static TextureData decompress_bc6h_hdr(const uint8_t* data, uint32_t w, uint32_t h) {
+    TextureData result;
+    result.width = w;
+    result.height = h;
+    result.channels = 4;
+    result.is_hdr = true;
+    result.format = TexelFormat::RGBA32_FLOAT;
+    result.pixels.resize((size_t)w * h * 4 * sizeof(float));
+
+    float* out_floats = reinterpret_cast<float*>(result.pixels.data());
+
+    uint32_t blocks_x = (w + 3) / 4;
+    uint32_t blocks_y = (h + 3) / 4;
+
+    for (uint32_t by = 0; by < blocks_y; by++) {
+        for (uint32_t bx = 0; bx < blocks_x; bx++) {
+            uint32_t block_index = by * blocks_x + bx;
+            const uint8_t* block = data + (size_t)block_index * 16;
+
+            XMVECTOR pixels[16];
+            D3DXDecodeBC6HU(pixels, block);
+
+            for (int py = 0; py < 4; py++) {
+                for (int px = 0; px < 4; px++) {
+                    uint32_t img_x = bx * 4 + px;
+                    uint32_t img_y = by * 4 + py;
+                    if (img_x >= w || img_y >= h) continue;
+
+                    XMFLOAT4 f;
+                    XMStoreFloat4(&f, pixels[py * 4 + px]);
+                    uint32_t dst = (img_y * w + img_x) * 4;
+                    out_floats[dst + 0] = f.x;
+                    out_floats[dst + 1] = f.y;
+                    out_floats[dst + 2] = f.z;
+                    out_floats[dst + 3] = f.w;
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
 // ============================================================================
 // Public API
 // ============================================================================
@@ -154,7 +257,7 @@ TextureData Decompressor::decompress(const uint8_t* data, uint32_t width, uint32
         case GTC_FORMAT_BC3:  return decompress_bc3(data, width, height);
         case GTC_FORMAT_BC4:  return decompress_bc4(data, width, height);
         case GTC_FORMAT_BC5:  return decompress_bc5(data, width, height);
-        case GTC_FORMAT_BC6H: return decompress_bc6h(data, width, height);
+        case GTC_FORMAT_BC6H: return decompress_bc6h_hdr(data, width, height);
         case GTC_FORMAT_BC7:  return decompress_bc7(data, width, height);
         // All ASTC formats
         case GTC_FORMAT_ASTC_4x4:   return decompress_astc(data, width, height, 4, 4);
@@ -171,21 +274,21 @@ TextureData Decompressor::decompress(const uint8_t* data, uint32_t width, uint32
         case GTC_FORMAT_ASTC_10x10: return decompress_astc(data, width, height, 10, 10);
         case GTC_FORMAT_ASTC_12x10: return decompress_astc(data, width, height, 12, 10);
         case GTC_FORMAT_ASTC_12x12: return decompress_astc(data, width, height, 12, 12);
-        // HDR ASTC formats (same block layout as LDR, just HDR content)
-        case GTC_FORMAT_ASTC_4x4_HDR:  return decompress_astc(data, width, height, 4, 4);
-        case GTC_FORMAT_ASTC_5x4_HDR:  return decompress_astc(data, width, height, 5, 4);
-        case GTC_FORMAT_ASTC_5x5_HDR:  return decompress_astc(data, width, height, 5, 5);
-        case GTC_FORMAT_ASTC_6x5_HDR:  return decompress_astc(data, width, height, 6, 5);
-        case GTC_FORMAT_ASTC_6x6_HDR:  return decompress_astc(data, width, height, 6, 6);
-        case GTC_FORMAT_ASTC_8x5_HDR:  return decompress_astc(data, width, height, 8, 5);
-        case GTC_FORMAT_ASTC_8x6_HDR:  return decompress_astc(data, width, height, 8, 6);
-        case GTC_FORMAT_ASTC_8x8_HDR:  return decompress_astc(data, width, height, 8, 8);
-        case GTC_FORMAT_ASTC_10x5_HDR: return decompress_astc(data, width, height, 10, 5);
-        case GTC_FORMAT_ASTC_10x6_HDR: return decompress_astc(data, width, height, 10, 6);
-        case GTC_FORMAT_ASTC_10x8_HDR: return decompress_astc(data, width, height, 10, 8);
-        case GTC_FORMAT_ASTC_10x10_HDR: return decompress_astc(data, width, height, 10, 10);
-        case GTC_FORMAT_ASTC_12x10_HDR: return decompress_astc(data, width, height, 12, 10);
-        case GTC_FORMAT_ASTC_12x12_HDR: return decompress_astc(data, width, height, 12, 12);
+        // HDR ASTC formats: route to HDR-aware decoder (HDR profile + F32 output)
+        case GTC_FORMAT_ASTC_4x4_HDR:  return decompress_astc_hdr_official(data, width, height, 4, 4);
+        case GTC_FORMAT_ASTC_5x4_HDR:  return decompress_astc_hdr_official(data, width, height, 5, 4);
+        case GTC_FORMAT_ASTC_5x5_HDR:  return decompress_astc_hdr_official(data, width, height, 5, 5);
+        case GTC_FORMAT_ASTC_6x5_HDR:  return decompress_astc_hdr_official(data, width, height, 6, 5);
+        case GTC_FORMAT_ASTC_6x6_HDR:  return decompress_astc_hdr_official(data, width, height, 6, 6);
+        case GTC_FORMAT_ASTC_8x5_HDR:  return decompress_astc_hdr_official(data, width, height, 8, 5);
+        case GTC_FORMAT_ASTC_8x6_HDR:  return decompress_astc_hdr_official(data, width, height, 8, 6);
+        case GTC_FORMAT_ASTC_8x8_HDR:  return decompress_astc_hdr_official(data, width, height, 8, 8);
+        case GTC_FORMAT_ASTC_10x5_HDR: return decompress_astc_hdr_official(data, width, height, 10, 5);
+        case GTC_FORMAT_ASTC_10x6_HDR: return decompress_astc_hdr_official(data, width, height, 10, 6);
+        case GTC_FORMAT_ASTC_10x8_HDR: return decompress_astc_hdr_official(data, width, height, 10, 8);
+        case GTC_FORMAT_ASTC_10x10_HDR: return decompress_astc_hdr_official(data, width, height, 10, 10);
+        case GTC_FORMAT_ASTC_12x10_HDR: return decompress_astc_hdr_official(data, width, height, 12, 10);
+        case GTC_FORMAT_ASTC_12x12_HDR: return decompress_astc_hdr_official(data, width, height, 12, 12);
         default: {
             TextureData empty;
             return empty;

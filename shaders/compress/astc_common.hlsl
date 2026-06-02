@@ -35,6 +35,13 @@
 #define ASTC_BLOCK_MODE_4x4_Q8    0x0053u
 #define ASTC_BLOCK_MODE_8x8_Q8    0x0053u   // 8x8 block, 4x4 grid, QUANT_8
 
+// QUANT_12 block modes (12 weight levels via trit-ISE encoding, ~3.6 bits/weight)
+// weight_quantmethod=7: r = (7%6)+2 = 3 -> bits[1:0]=01, bit[4]=1
+// h = (7<6)?0:1 = 1
+// 4x4 grid: a=2, b=0 -> bits[6:5]=10, bits[8:7]=00
+// mode = 0x01 + 0x10 + 0x40 + 0x200 = 0x251
+#define ASTC_BLOCK_MODE_4x4_Q12   0x0251u
+
 // Larger weight grids + QUANT_8.
 // Formula: r=7 (Q8) -> bits[1:0]=11, bit[4]=1, h=0.
 //   5x4 grid: a=(Y-2)=2, b=(X-4)=1 -> bits[6:5]=10, bits[8:7]=01 -> 0x03+0x10+0x40+0x80 = 0xD3
@@ -117,6 +124,17 @@ uint astc_quantize_weight_q8(float t)
     float ft = saturate(t) * 7.0f;
     uint w = (uint)(ft + 0.5f);
     if (w > 7u) w = 7u;
+    return w;
+}
+
+// QUANT_12: 12 levels (~3.58 bits avg via ISE trit encoding).
+// Decoded values {0, 6, 11, 17, 23, 28, 34, 40, 45, 51, 57, 64}/64.
+// Approximate boundaries via simple rounding for performance: w = round(t * 11).
+uint astc_quantize_weight_q12(float t)
+{
+    float ft = saturate(t) * 11.0f;
+    uint w = (uint)(ft + 0.5f);
+    if (w > 11u) w = 11u;
     return w;
 }
 
@@ -240,6 +258,43 @@ uint4 astc_pack_block_with_mode(uint block_mode, uint endpoints[6], uint weights
     block.z = (ep_hi >> 15u);
 
     // Pack weight data: 16 weights x 2 bits, then bit-reverse for ASTC layout
+    uint weight_bits = 0u;
+    [unroll]
+    for (int i = 0; i < 16; i++)
+    {
+        weight_bits |= (weights[i] & 3u) << ((uint)(i) * 2u);
+    }
+    block.w = astc_reverse_bits_32(weight_bits);
+
+    return block;
+}
+
+// Pack block with HDR CEM (CEM 11 = HDR RGB Direct, FMT_HDR_RGB).
+// Per ASTC spec, CEM 11 uses 6 endpoint values (a, c, b0, b1, d0, d1) which
+// the decoder unpacks via the HDR RGB direct path.
+// Total endpoint bits: 6 × 8 = 48 bits at QUANT_256.
+//
+// Note: CEM 12 is LDR RGBA (FMT_RGBA), CEM 11 is HDR RGB Direct.
+// astcenc enum: FMT_HDR_RGB = 11, FMT_RGBA = 12.
+uint4 astc_pack_block_with_mode_hdr(uint block_mode, uint endpoints[6], uint weights[16])
+{
+    // Header: block_mode | partition_count=0 | CEM 11 (HDR RGB Direct)
+    uint header = block_mode
+                | (0u << 11u)
+                | (11u << 13u);
+
+    uint ep_lo = endpoints[0]
+               | (endpoints[1] << 8u)
+               | (endpoints[2] << 16u)
+               | (endpoints[3] << 24u);
+    uint ep_hi = endpoints[4]
+               | (endpoints[5] << 8u);
+
+    uint4 block;
+    block.x = header | (ep_lo << 17u);
+    block.y = (ep_lo >> 15u) | (ep_hi << 17u);
+    block.z = (ep_hi >> 15u);
+
     uint weight_bits = 0u;
     [unroll]
     for (int i = 0; i < 16; i++)

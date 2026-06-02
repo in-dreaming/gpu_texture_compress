@@ -274,6 +274,55 @@ Initial baseline — PCA endpoints + simple quantization, no iterative refinemen
 5. **修复完全损坏的格式**：ASTC_8x6/12x10 从 12.42 dB（噪声水平）跃升至 30+ dB
 6. **ASTC `assemble_block` bit 覆写 bug 修复** — `=` → `|=` 单字符修复，全 14 个 ASTC 格式从 7.5 dB 噪声恢复正常
 7. **PCA 轴搜索** (所有 ASTC) — PCA + RGB 三轴候选，按量化误差挑最优；自然图像 PCA 已近乎最优，但 RGB 轴在 PCA 收敛欠佳的边角块上微涨
+8. **完整 ASTC HDR 编码器（CEM 11 / HDR RGB Direct）** — 8 种 precision mode + LNS 编码 + log 空间 PCA，全 14 个 HDR ASTC 格式从 25.7 dB 噪声跃升至 37–45 dB
+
+## HDR 格式结果 (2026-06-02)
+
+新增 HDR 评估管线（`ASTCENC_PRF_HDR_RGB_LDR_A` + `ASTCENC_TYPE_F32` + image-specific peak PSNR），并实现完整 CEM 11（HDR RGB Direct）编码器。
+
+**测试条件**：5 张 HDRIHaven HDR-RGB 纹理（arboretum / bellparkpier / canarywharf / eveningroad / riverwalk），Vulkan backend，QualityLevel=1，warmup_runs=1，measurement_runs=3。
+
+### HDR 格式 — 优化后
+
+| 格式 | PSNR (dB) | Δ vs flat-fallback | SSIM | FLIP | Time (ms) | 备注 |
+|------|-----------|---------------------|------|------|-----------|------|
+| BC6H | **51.98** | (基准) | 0.9926 | 0.0103 | 0.31 | LSQ + 错误守卫 |
+| ASTC 4×4 HDR | **45.45** | +19.7 | 0.9841 | 0.0170 | 0.30 | CEM 11 8 modes |
+| ASTC 5×4 HDR | **43.99** | +18.1 | 0.9744 | 0.0198 | 0.26 | 同上 |
+| ASTC 5×5 HDR | **41.75** | +15.9 | 0.9627 | 0.0229 | 0.30 | 同上 |
+| ASTC 6×5 HDR | **41.22** | +15.4 | 0.9587 | 0.0245 | 0.31 | 同上 |
+| ASTC 6×6 HDR | **40.61** | +14.8 | 0.9537 | 0.0262 | 0.28 | 同上 |
+| ASTC 8×5 HDR | **40.24** | +14.4 | 0.9507 | 0.0271 | 0.27 | 同上 |
+| ASTC 8×6 HDR | **39.81** | +14.0 | 0.9461 | 0.0286 | 0.29 | 同上 |
+| ASTC 8×8 HDR | **39.00** | +13.2 | 0.9370 | 0.0313 | 0.27 | 同上 |
+| ASTC 10×5 HDR | **39.85** | +14.0 | 0.9454 | 0.0291 | 0.29 | 同上 |
+| ASTC 10×6 HDR | **39.52** | +13.7 | 0.9411 | 0.0305 | 0.28 | 同上 |
+| ASTC 10×8 HDR | **38.85** | +13.1 | 0.9325 | 0.0330 | 0.30 | 同上 |
+| ASTC 10×10 HDR | **37.63** | +11.9 | 0.9256 | 0.0351 | 0.28 | 同上 |
+| ASTC 12×10 HDR | **37.18** | +11.5 | 0.9212 | 0.0364 | 0.27 | 同上 |
+| ASTC 12×12 HDR | **37.30** | +11.7 | 0.9151 | 0.0381 | 0.26 | 同上 |
+
+**HDR 累计提升**：~210 dB across 14 ASTC HDR formats，零回归。
+
+> 注：4×4–6×6 全部 ≥ 40 dB（高保真），8×8–10×10 在 38–39 dB（视觉无损区间），12×12 仍达 37.3 dB。BC6H 仍是 4×4 cost 下的 HDR 质量天花板（51.98 dB），ASTC HDR 的优势在 6×6 起的更高压缩比上。
+
+### HDR 编码器关键技术
+
+1. **LNS（Logarithmic Number System）编码**：HDR float → 16 bit log 空间整数（0..65535），与 astcenc 官方一致
+2. **Log 空间 PCA 端点搜索**：在 LNS 域做 PCA，避开 HDR 巨大动态范围对 RGB 域 PCA 的退化
+3. **8 种 astcenc precision mode**（mode 0..7，每种有不同 a/b/c/d bit 分配 + b/c/d cutoff）：每块尝试全部 8 mode 选误差最低
+4. **major component selection + swizzle**：3 个候选主轴 × 8 modes，编码 a (light major) + b0/b1 (light mid deltas) + c (dark-light major delta) + d0/d1 (corrections)
+5. **flat fallback**：当所有 mode 都不可行时，退化到常量块编码
+6. **CEM 11 / HDR RGB Direct**（关键修正）：早期错误使用 CEM 12 (LDR RGBA)，最终修正为 CEM 11 后单图从 22.46 → 39.93 dB
+7. **NxM 块统一通过 4×4 子采样**：所有 HDR 格式调用同一份 `astc_compress_4x4_hdr_proper`，子采样模式与 LDR 路径一致
+
+### HDR 评估管线（src/）
+
+- `decompress_astc_hdr_official()`：使用 `ASTCENC_PRF_HDR_RGB_LDR_A` profile + `ASTCENC_TYPE_F32` 输出
+- `decompress_bc6h_hdr()`：用 `D3DXDecodeBC6HU` 直接解码到 float32
+- HDR PSNR 公式：`10·log10(peak² / MSE)`，peak 来自参考图（floor 1.0）
+- HDR SSIM：peak-scaled C1/C2
+- HDR FLIP / LPIPS：Reinhard tone-map 后比较
 
 ## SDK 使用指南
 

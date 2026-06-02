@@ -269,6 +269,43 @@ uint4 astc_pack_block_with_mode(uint block_mode, uint endpoints[6], uint weights
     return block;
 }
 
+// Pack block with HDR CEM (CEM 11 = HDR RGB Direct, FMT_HDR_RGB).
+// Per ASTC spec, CEM 11 uses 6 endpoint values (a, c, b0, b1, d0, d1) which
+// the decoder unpacks via the HDR RGB direct path.
+// Total endpoint bits: 6 × 8 = 48 bits at QUANT_256.
+//
+// Note: CEM 12 is LDR RGBA (FMT_RGBA), CEM 11 is HDR RGB Direct.
+// astcenc enum: FMT_HDR_RGB = 11, FMT_RGBA = 12.
+uint4 astc_pack_block_with_mode_hdr(uint block_mode, uint endpoints[6], uint weights[16])
+{
+    // Header: block_mode | partition_count=0 | CEM 11 (HDR RGB Direct)
+    uint header = block_mode
+                | (0u << 11u)
+                | (11u << 13u);
+
+    uint ep_lo = endpoints[0]
+               | (endpoints[1] << 8u)
+               | (endpoints[2] << 16u)
+               | (endpoints[3] << 24u);
+    uint ep_hi = endpoints[4]
+               | (endpoints[5] << 8u);
+
+    uint4 block;
+    block.x = header | (ep_lo << 17u);
+    block.y = (ep_lo >> 15u) | (ep_hi << 17u);
+    block.z = (ep_hi >> 15u);
+
+    uint weight_bits = 0u;
+    [unroll]
+    for (int i = 0; i < 16; i++)
+    {
+        weight_bits |= (weights[i] & 3u) << ((uint)(i) * 2u);
+    }
+    block.w = astc_reverse_bits_32(weight_bits);
+
+    return block;
+}
+
 // Legacy function for backward compatibility (4x4 default)
 uint4 astc_pack_block(uint endpoints[6], uint weights[16])
 {

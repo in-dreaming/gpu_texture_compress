@@ -1,0 +1,10 @@
+{
+    "name": "hdr_bc6h_vs_astc",
+    "formats": ["BC6H", "ASTC_4x4_HDR", "ASTC_6x6_HDR", "ASTC_8x8_HDR"],
+    "textures": [
+        "src_texture/Images/HDRIHaven/HDR-RGB/hdr-rgb-arboretum.hdr"
+    ],
+    "quality_level": 1,
+    "warmup_runs": 1,
+    "measurement_runs": 3
+}
