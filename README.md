@@ -265,7 +265,28 @@ Initial baseline — PCA endpoints + simple quantization, no iterative refinemen
 
 **40+ dB 达成情况**：4 / 14 格式（4×4 / 5×4 / 5×5 / 6×5）。
 
-> 注：6×6 及以上块的 ASTC 单 partition 128-bit 容量天花板使其难以达到 40+ dB（需要多 partition 等架构级改造）。当前结果在 1 partition + 单/双/三 mode search 框架下接近最优。
+### 各格式详细结果
+
+| 格式 | PSNR (dB) | 达标 | 距40差距 | 备注 |
+|------|-----------|------|----------|------|
+| ASTC 4×4 | **47.79** | ✅ | +7.79 | 4×4 grid + Q12 + Q256 |
+| ASTC 5×4 | **45.30** | ✅ | +5.30 | 1:1 grid (5×4) + Q8 |
+| ASTC 5×5 | **41.89** | ✅ | +1.89 | dual: 5×5+Q5 ∨ 4×4+Q12 |
+| ASTC 6×5 | **40.18** | ✅ | +0.18 | triple: 5×5+Q5 ∨ 4×4+Q12 ∨ 6×5+Q4(1:1) |
+| ASTC 6×6 | **36.22** | ❌ | -3.78 | 单partition物理限制 (3.56 bpp) |
+| ASTC 8×5 | **35.47** | ❌ | -4.53 | 单partition物理限制 (3.20 bpp) |
+| ASTC 8×6 | **34.53** | ❌ | -5.47 | 单partition物理限制 (2.67 bpp) |
+| ASTC 8×8 | **33.48** | ❌ | -6.52 | 单partition物理限制 (2.00 bpp) |
+| ASTC 10×5 | **34.05** | ❌ | -5.95 | 单partition物理限制 (2.56 bpp) |
+| ASTC 10×6 | **33.42** | ❌ | -6.58 | 单partition物理限制 (2.13 bpp) |
+| ASTC 10×8 | **32.62** | ❌ | -7.38 | 单partition物理限制 (1.60 bpp) |
+| ASTC 10×10 | **31.96** | ❌ | -8.04 | 单partition物理限制 (1.28 bpp) |
+| ASTC 12×10 | **31.37** | ❌ | -8.63 | 单partition物理限制 (1.07 bpp) |
+| ASTC 12×12 | **30.87** | ❌ | -9.13 | 单partition物理限制 (0.89 bpp) |
+
+> **物理限制说明**：ASTC 每块固定128 bits。单 partition 时，6×6及以上块的 bits/pixel 低于4，理论上限约38 dB。要达到40+需多 partition（增加12 bits header + 6个额外endpoint），但会降低 weight 精度。当前实现在单 partition + 可变 weight grid + block-mode search 框架下已接近最优。
+
+> 实验尝试：为6×6实现2-partition（类似BC7 Mode 1），但bit budget压缩导致weight量化过粗，实测无提升或下降。结论：在当前框架下，6×6+格式难以突破单 partition 天花板。
 
 **总累计提升**：约 **+475 dB across 14 ASTC formats** (3 轮实验后)，零回归。
 

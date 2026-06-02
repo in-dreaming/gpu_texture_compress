@@ -417,6 +417,28 @@ static float gt_recon_error_1to1(float4 texels[BLOCK_SIZE], float4 ep0, float4 e
     return total;
 }
 
+// Helper to pack weights with trit ISE (for QUANT_3)
+static void gt_pack_weights_trit(uint sc[BLOCK_SIZE], inout uint4 wt)
+{
+    uint bp = 0;
+    // Process in groups of 5 (trit encoding groups 5 values)
+    // QUANT_3 uses 0 extra bits per value (pure trit)
+    [unroll] for (uint g = 0; g < BLOCK_SIZE / 5; ++g) {
+        uint idx = g * 5;
+        encode_trits(0, sc[idx], sc[idx+1], sc[idx+2], sc[idx+3], sc[idx+4], wt, bp);
+    }
+    // Handle remainder
+    #if (BLOCK_SIZE % 5 == 1)
+        encode_trits(0, sc[BLOCK_SIZE-1], 0, 0, 0, 0, wt, bp);
+    #elif (BLOCK_SIZE % 5 == 2)
+        encode_trits(0, sc[BLOCK_SIZE-2], sc[BLOCK_SIZE-1], 0, 0, 0, wt, bp);
+    #elif (BLOCK_SIZE % 5 == 3)
+        encode_trits(0, sc[BLOCK_SIZE-3], sc[BLOCK_SIZE-2], sc[BLOCK_SIZE-1], 0, 0, wt, bp);
+    #elif (BLOCK_SIZE % 5 == 4)
+        encode_trits(0, sc[BLOCK_SIZE-4], sc[BLOCK_SIZE-3], sc[BLOCK_SIZE-2], sc[BLOCK_SIZE-1], 0, wt, bp);
+    #endif
+}
+
 static uint4 gt_pack_1to1(float4 ep0, float4 ep1, uint levels[BLOCK_SIZE])
 {
     uint epq[8];
@@ -432,10 +454,17 @@ static uint4 gt_pack_1to1(float4 ep0, float4 ep1, uint levels[BLOCK_SIZE])
     }
 
     uint4 wt = uint4(0,0,0,0);
+
+#ifdef T1_IS_TRIT
+    // Use trit ISE encoding (for QUANT_3)
+    gt_pack_weights_trit(sc, wt);
+#else
+    // Use direct bit packing (for Q4, Q8, etc.)
     uint bp = 0;
     [unroll] for (uint i = 0; i < BLOCK_SIZE; ++i) {
         orbits8_ptr(wt, bp, sc[i], (uint)T1_WEIGHT_BITS);
     }
+#endif
 
     uint4 phy = uint4(0,0,0,0);
     phy.w |= reverse_byte(wt.x & 0xFF) << 24;
