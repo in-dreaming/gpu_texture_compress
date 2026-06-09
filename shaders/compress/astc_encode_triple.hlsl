@@ -445,17 +445,21 @@ static uint4 gt_pack_1to1(float4 ep0, float4 ep1, uint levels[BLOCK_SIZE])
     return phy;
 }
 
-// ===== Top-level: triple-mode block-mode search =====
+// ===== Top-level: QualityLevel-adaptive block-mode search =====
+// QualityLevel 0: Mode A only (fastest, smallest code)
+// QualityLevel 1: Mode A + B (balanced)
+// QualityLevel 2: All three modes (best quality)
 
 uint4 GRID_FUNC_NAME(float4 texels[BLOCK_SIZE])
 {
-    // Mode A: 5x5 grid + Q5
+    // Mode A: 5x5 grid + Q5 (always computed)
     float4 ep5_0, ep5_1;
     gt_pca_full(texels, ep5_0, ep5_1);
     uint lev5[25];
     gt_calc_5x5_levels(texels, ep5_0, ep5_1, lev5);
     float err5 = gt_recon_error_5x5(texels, ep5_0, ep5_1, lev5);
 
+#if QUALITY_LEVEL >= 1
     // Mode B: 4x4 grid + Q12 (subsampled to 16)
     float4 sm16[16];
     float sx4 = (float)(BLOCK_W - 1) / 3.0f;
@@ -470,15 +474,30 @@ uint4 GRID_FUNC_NAME(float4 texels[BLOCK_SIZE])
     uint lev4[16];
     gt_calc_4x4_levels(sm16, ep4_0, ep4_1, lev4);
     float err4 = gt_recon_error_4x4(texels, ep4_0, ep4_1, lev4);
+#endif
 
+#if QUALITY_LEVEL >= 2
     // Mode C: 1:1 grid + QN
     float4 ep1_0 = ep5_0;  // PCA on full block already done; reuse
     float4 ep1_1 = ep5_1;
     uint lev1[BLOCK_SIZE];
     gt_calc_1to1_levels(texels, ep1_0, ep1_1, lev1);
     float err1 = gt_recon_error_1to1(texels, ep1_0, ep1_1, lev1);
+#endif
 
-    // Pick lowest
+    // Pick best mode based on QualityLevel
+#if QUALITY_LEVEL == 0
+    // Fast: Mode A only
+    return gt_pack_5x5_q5(ep5_0, ep5_1, lev5);
+#elif QUALITY_LEVEL == 1
+    // Balanced: Mode A vs B
+    if (err5 <= err4) {
+        return gt_pack_5x5_q5(ep5_0, ep5_1, lev5);
+    } else {
+        return gt_pack_4x4_q12(ep4_0, ep4_1, lev4);
+    }
+#else
+    // Best: All three modes
     if (err5 <= err4 && err5 <= err1) {
         return gt_pack_5x5_q5(ep5_0, ep5_1, lev5);
     } else if (err4 <= err1) {
@@ -486,4 +505,5 @@ uint4 GRID_FUNC_NAME(float4 texels[BLOCK_SIZE])
     } else {
         return gt_pack_1to1(ep1_0, ep1_1, lev1);
     }
+#endif
 }

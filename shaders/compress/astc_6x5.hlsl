@@ -13,6 +13,12 @@
 #define T1_WEIGHT_RANGE_M1 3
 #define T1_WEIGHT_BITS 2
 #define T1_BLOCKMODE 354
+
+// QualityLevel-based compilation (0=fast, 1=balanced, 2=best)
+#ifndef QUALITY_LEVEL
+#define QUALITY_LEVEL 1  // Default: Mode A+B (balanced)
+#endif
+
 #include "astc_encode_triple.hlsl"
 #undef BLOCK_W
 #undef BLOCK_H
