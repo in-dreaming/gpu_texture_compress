@@ -33,3 +33,5 @@ Thumbs.db
 *.dxil
 
 test_output.txt
+output/
+.specstory/

@@ -258,4 +258,9 @@ std::vector<TextureLoader::TestImage> TextureLoader::load_test_dataset(const std
     return images;
 }
 
+bool TextureLoader::save_png(const std::string& path, const std::vector<uint8_t>& rgba,
+                             int width, int height) {
+    return stbi_write_png(path.c_str(), width, height, 4, rgba.data(), width * 4) != 0;
+}
+
 } // namespace gtc

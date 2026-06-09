@@ -63,6 +63,10 @@ public:
     };
     std::vector<TestImage> load_test_dataset(const std::string& dataset_root);
 
+    // Save RGBA8 image to PNG
+    static bool save_png(const std::string& path, const std::vector<uint8_t>& rgba,
+                         int width, int height);
+
 private:
     SDL_GPUDevice* device_;
 

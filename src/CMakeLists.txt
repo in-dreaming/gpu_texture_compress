@@ -8,6 +8,7 @@ set(GTC_SOURCES
     decompressor.cpp
     eval_metrics.cpp
     experiment_runner.cpp
+    comparison_baker.cpp
     results_logger.cpp
 )
 

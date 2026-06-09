@@ -6,6 +6,7 @@
 #include "decompressor.h"
 #include "eval_metrics.h"
 #include "experiment_runner.h"
+#include "comparison_baker.h"
 #include "results_logger.h"
 
 #include <cstdio>
@@ -21,6 +22,9 @@ static void print_usage() {
     printf("  --shader-dir <path>     Path to SDK shaders (default: ./shaders)\n");
     printf("  --data-dir <path>       Path to data directory (default: ./data)\n");
     printf("  --results <path>        Path to results.tsv (default: ./experiments/results.tsv)\n");
+    printf("  --bake <path>           Bake comparison atlas (all test textures x all formats)\n");
+    printf("  --thumb-size <n>        Thumbnail size for --bake (default: 256)\n");
+    printf("  --quality-level <n>     Quality level for --bake (default: 1)\n");
     printf("  --help                  Print this help message\n");
 }
 
@@ -30,6 +34,9 @@ int main(int argc, char* argv[]) {
     std::string shader_dir = "shaders";
     std::string data_dir = "data";
     std::string results_path;  // Will be computed relative to config if not specified
+    std::string bake_output_path;
+    int thumb_size = 256;
+    int bake_quality_level = 1;
     bool info_only = false;
 
     for (int i = 1; i < argc; i++) {
@@ -43,6 +50,12 @@ int main(int argc, char* argv[]) {
             data_dir = argv[++i];
         } else if (strcmp(argv[i], "--results") == 0 && i + 1 < argc) {
             results_path = argv[++i];
+        } else if (strcmp(argv[i], "--bake") == 0 && i + 1 < argc) {
+            bake_output_path = argv[++i];
+        } else if (strcmp(argv[i], "--thumb-size") == 0 && i + 1 < argc) {
+            thumb_size = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--quality-level") == 0 && i + 1 < argc) {
+            bake_quality_level = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             print_usage();
             return 0;
@@ -66,14 +79,30 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    if (config_path.empty()) {
-        printf("ERROR: No --config specified. Use --help for usage.\n");
-        return 1;
-    }
-
     // Initialize components
     gtc::ShaderCompiler compiler(device.device());
     gtc::ComputeDispatch dispatch(device.device());
+
+    if (!bake_output_path.empty()) {
+        gtc::ComparisonBaker baker(device, compiler, dispatch, shader_dir, data_dir);
+        gtc::BakeConfig bake_config;
+        bake_config.output_path = bake_output_path;
+        bake_config.thumb_size = thumb_size;
+        bake_config.quality_level = bake_quality_level;
+
+        printf("\n=== Baking Comparison Atlas ===\n\n");
+        gtc::BakeResult bake_result = baker.bake(bake_config);
+        if (!bake_result.success) {
+            printf("ERROR: Bake failed: %s\n", bake_result.error_message.c_str());
+            return 1;
+        }
+        return 0;
+    }
+
+    if (config_path.empty()) {
+        printf("ERROR: No --config or --bake specified. Use --help for usage.\n");
+        return 1;
+    }
 
     // Run experiment
     fprintf(stderr, "[main] Loading config: %s\n", config_path.c_str());
